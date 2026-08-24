@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Encore mark: a filing with its corner turned, and the number pulled out of
+       it. Same geometry as LogoMark, redrawn at 32px so the fold and the line
+       stay legible in a browser tab. -->
+  <rect width="32" height="32" rx="6" fill="#2A4E7E"/>
+  <path d="M9 6.5h9.5L24 12v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 8 25V8a1.5 1.5 0 0 1 1-1.5Z" fill="#fff" fill-opacity="0.18"/>
+  <path d="M18.5 6.5 24 12h-4a1.5 1.5 0 0 1-1.5-1.5V6.5Z" fill="#fff" fill-opacity="0.6"/>
+  <path d="M11.5 21.5l3.6-4.2 3 2.5 4-5.6" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

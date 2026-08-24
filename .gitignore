@@ -1,0 +1,51 @@
+# Environments / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Node / Next.js
+node_modules/
+.turbo/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Corpus artifacts. 147 MB of SEC HTML and extracted markdown, all of it
+# reproducible with `python corpus/download.py`, so it is never checked in.
+/corpus/downloads/*
+!/corpus/downloads/.gitkeep
+/corpus/markdown/*
+!/corpus/markdown/.gitkeep
+*.parquet
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Local debug artifacts. dev_token.txt held a real (expired) Supabase JWT
+# carrying the project ref, a user id and an email, and was one commit away
+# from being published.
+dev_token.txt
+*token*.txt
+.session

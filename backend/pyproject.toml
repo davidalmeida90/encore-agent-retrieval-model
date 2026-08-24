@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "encore-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic==1.18.4",
+    "fastapi==0.136.3",
+    "httpx==0.28.1",
+    "openai==2.38.0",
+    "pgvector==0.4.2",
+    "psycopg[binary]==3.3.4",
+    "pydantic==2.13.4",
+    "pydantic-ai==1.104.0",
+    "pydantic-settings==2.14.1",
+    "sqlalchemy==2.0.50",
+    "structlog==25.5.0",
+    "supabase==2.30.0",
+    "tiktoken==0.12.0",
+    "uvicorn==0.48.0",
+    # agent harness + evaluation. These were installed ad hoc during development
+    # and were missing here, so a fresh environment did not reproduce.
+    "pydantic-ai-harness==0.18.1",
+    "pydantic-evals==1.104.0",
+    "logfire==4.40.0",
+    # the vendored loaders write their parquet price cache through duckdb;
+    # without it every price question refetches a full year from Yahoo
+    "duckdb",
+]
+
+[project.optional-dependencies]
+ingest = [
+    "docling==2.96.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.uv]
+add-bounds = "exact"
+exclude-newer = "7 days"
+
+[dependency-groups]
+dev = [
+    "ipykernel==7.2.0",
+    "pytest==9.0.3",
+    "ruff==0.15.15",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+    "integration: tests that require live Supabase and OpenAI credentials",
+]

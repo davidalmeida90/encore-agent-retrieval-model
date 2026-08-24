@@ -1,0 +1,254 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+/* Strict light-only monochrome theme. Dark variants are scoped to a `.dark`
+   class that the app never applies, which keeps system dark mode from leaking
+   into third-party (shadcn / prompt-kit) components that ship `dark:` utilities. */
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.625rem;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.18 0 0);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0 0);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0 0);
+
+  --primary: oklch(0.18 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.52 0 0);
+
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.6 0 0);
+
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.18 0 0);
+  --sidebar-primary: oklch(0.18 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.94 0 0);
+  --sidebar-accent-foreground: oklch(0.18 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.6 0 0);
+}
+
+
+/* ------------------------------------------------------ Palette (identity)
+   Navy ramp borrowed from David's Meridian system, kept deliberately quiet.
+   Typography and spacing stay as they were, so this is an evolution of the
+   existing design rather than a different app.
+
+   What carries over from Meridian:
+     no gradients, no shadows
+     no bright or saturated colour, navy and cool greys only
+     burgundy reserved for genuine negatives, never decoration
+   Restraint is the point: navy means something because little else is coloured. */
+:root {
+  --navy-900: #0B2545;
+  --navy-700: #13315C;
+  --blue-600: #2A4E7E;
+  --blue-500: #3C6997;
+  --blue-300: #8DA9C4;
+  --blue-100: #D9E2EC;
+  --blue-050: #EEF2F7;
+  --burgundy-700: #8B2635;
+  --gold-600: #9A7B2F;
+  --gold-100: #EFE6CF;
+
+  /* 10px read a little bubbly, 4px read boxy. 8px sits between: considered,
+     still soft. */
+  --radius: 0.5rem;
+
+  --background: #FFFFFF;
+  --foreground: #1A1A1A;
+  --card: #FFFFFF;
+  --card-foreground: #1A1A1A;
+  --popover: #FFFFFF;
+  --popover-foreground: #1A1A1A;
+
+  --primary: var(--navy-900);
+  --primary-foreground: #FFFFFF;
+  --secondary: #F2F2F2;
+  --secondary-foreground: var(--navy-900);
+  --muted: #F8F8F8;
+  --muted-foreground: #5E5E5E;
+  --accent: var(--blue-050);
+  --accent-foreground: var(--navy-900);
+  --destructive: var(--burgundy-700);
+  --destructive-foreground: #FFFFFF;
+  --border: #E2E2E2;
+  --input: #C8C8C8;
+  --ring: var(--blue-500);
+
+  /* Dark navigation, light workspace. The earlier pass only changed accent
+     colours, which on the empty screen was invisible: the layout carried all
+     the identity and the layout was unchanged. This is the differentiator. */
+  --sidebar: var(--navy-900);
+  --sidebar-foreground: #D9E2EC;
+  --sidebar-primary: #FFFFFF;
+  --sidebar-primary-foreground: var(--navy-900);
+  --sidebar-accent: #13315C;
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: #1B3A63;
+  --sidebar-ring: var(--blue-500);
+
+  /* brand-* kept as aliases so existing components need no rewrite */
+  --brand-50: var(--blue-050);
+  --brand-100: var(--blue-100);
+  --brand-200: #B8CAD9;
+  --brand-300: var(--blue-300);
+  --brand-400: #6590B8;
+  --brand-500: var(--blue-500);
+  --brand-600: var(--blue-600);
+  --brand-700: var(--navy-700);
+  --brand-800: #0F2A52;
+  --brand-900: var(--navy-900);
+}
+
+@theme inline {
+  --font-sans: 'Geist Variable', system-ui, sans-serif;
+  --font-heading: var(--font-sans);
+  --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-800: var(--brand-800);
+  --color-brand-900: var(--brand-900);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+}
+
+/* Gradient wipe used by the text-shimmer loader. prompt-kit ships the markup
+   but expects the host app to define this keyframe. */
+@keyframes shimmer {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply font-sans;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    margin: 0;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+  }
+}
+
+/* Panels that benefit from a visible scrollbar opt in (the activity log). */
+.show-scrollbar::-webkit-scrollbar { width: 6px; }
+.show-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--brand-200);
+  border-radius: 3px;
+}
+.show-scrollbar { scrollbar-width: thin; }
+
+/* Meridian: no shadows anywhere. shadcn ships shadow utilities on cards,
+   popovers and dropdowns; neutralise them centrally rather than hunting each
+   component, and lean on borders for separation instead. */
+.shadow-sm, .shadow, .shadow-md, .shadow-lg, .shadow-xl,
+[class*="shadow-"] { box-shadow: none !important; }
+
+/* Numbers are the point of this app, so use tabular figures: digits share a
+   width, columns line up, and a changing value does not reflow its row. */
+body {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hairline under the chat header. Meridian leans on rules rather than shadows
+   for separation, and this is the one place the app needs a visible edge. */
+header.h-14 {
+  box-shadow: inset 0 -1px 0 var(--brand-100) !important;
+}
+
+/* The sidebar is dark while the workspace stays light, so components inside it
+   that reach for light-mode tokens (muted grey text, dark avatars) come out
+   nearly invisible. Rather than rewrite each component, remap those tokens
+   inside the sidebar only. */
+[data-slot="sidebar"],
+[data-sidebar="sidebar"] {
+  --muted-foreground: #8DA9C4;
+  --foreground: #D9E2EC;
+  --primary: #FFFFFF;
+  --primary-foreground: var(--navy-900);
+  --accent: #13315C;
+  --accent-foreground: #FFFFFF;
+  --border: #1B3A63;
+  --destructive: #E8919B;
+}
+
+/* Narrower navigation, wider workspace. 16rem is the shadcn default and is
+   generous for a list of short thread titles; the answer column is where the
+   reading happens. */
+[data-slot="sidebar-wrapper"] {
+  --sidebar-width: 14rem;
+}

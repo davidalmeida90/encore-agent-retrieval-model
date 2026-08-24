@@ -1,0 +1,20 @@
+# Normalise line endings in the repository to LF.
+#
+# Authored on Windows, so the working copies here are a mix of CRLF and LF.
+# Without this the first clone on Linux or macOS shows spurious whole-file
+# diffs, and `git blame` becomes useless on anything that has been touched by
+# an editor with different defaults.
+#
+# Checkouts still get native endings on Windows; only what git stores is LF.
+* text=auto eol=lf
+
+# PowerShell is fine with LF, but keep CRLF so the file opens cleanly in the
+# Windows editors it is actually run from.
+*.ps1 text eol=crlf
+
+# Never touched.
+*.png binary
+*.jpg binary
+*.ico binary
+*.parquet binary
+*.pdf binary
