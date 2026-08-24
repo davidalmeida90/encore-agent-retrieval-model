@@ -8,6 +8,14 @@ A finance agent that answers questions about US public companies from two kinds 
 
 Runs locally. Postgres, auth, and vector storage are hosted on Supabase; everything else runs on your machine.
 
+## Walkthrough
+
+A 33-minute build of this project from first principles: RAG, chunking a 10-K,
+hybrid retrieval and re-ranking, the Pydantic AI agent loop, tool calls, the
+out-of-loop verifier, and what each part costs.
+
+[![Building a Finance AI Agent App with Pydantic AI + RAG](https://img.youtube.com/vi/71hV5jWe88Y/hqdefault.jpg)](https://youtu.be/71hV5jWe88Y)
+
 ## Design rule
 
 The model never does arithmetic on retrieved prose. Every figure comes from a tagged XBRL fact or a valuation engine, because arithmetic-over-text is the documented FinanceBench failure mode. Everything the model *does* say about a filing must carry a citation that survives a fail-closed grounding check, or the answer is discarded rather than shown.
@@ -62,6 +70,28 @@ frontend/                    Vite + React SPA
 | Valuation methodology the model follows | [backend/skills/](backend/skills/) |
 | How answers are checked before you see them | [backend/app/verification/validator.py](backend/app/verification/validator.py) |
 
+## Prerequisites
+
+| Tool | Version | Used for |
+|---|---|---|
+| [Python](https://www.python.org/downloads/) | 3.12+ | Backend, ingestion, corpus scripts |
+| [Node.js](https://nodejs.org/) | 20+ (LTS) | Frontend toolchain |
+| [pnpm](https://pnpm.io/installation) | latest | Frontend packages (`corepack enable`) |
+
+Accounts and keys, all of which have a usable free tier:
+
+| Service | Used for | Free tier |
+|---|---|---|
+| [Supabase](https://supabase.com) | Postgres, `pgvector`, auth | yes |
+| [Google AI Studio](https://aistudio.google.com/apikey) | Gemini: agent, keywords, grounding judge | 500 requests per model per day |
+| [OpenAI](https://platform.openai.com/api-keys) | embeddings only | no, but a full corpus embed costs cents |
+
+SEC EDGAR needs no key. It asks only that you identify yourself in a
+`User-Agent`, which is what `SEC_EDGAR_UA` is for.
+
+A CUDA GPU is optional. Re-ranking falls back to CPU automatically; the
+difference measured here was 6.55s to 0.2s for the same 30 passages.
+
 ## Running it
 
 ```bash
@@ -75,6 +105,27 @@ npm install && npm run dev
 ```
 
 Configuration lives in `backend/.env`. See [handbook/guides/backend-setup.md](handbook/guides/backend-setup.md) and [handbook/guides/supabase-setup.md](handbook/guides/supabase-setup.md).
+
+## Building the corpus
+
+The repository ships no filings: they are 147 MB, and reproducible. Edit
+`TICKERS` and `FILINGS_PER_COMPANY` at the top of `corpus/download.py`, set
+`SEC_EDGAR_UA` to a real contact address, then:
+
+```bash
+python corpus/download.py             # fetch 10-K HTML from SEC EDGAR
+python corpus/convert_to_markdown.py  # extract text and tables
+cd backend
+python -m ingest.load_source_documents
+python -m ingest.chunk_and_embed --all
+```
+
+The default list is ten large caps and the last two to three annual reports of
+each: 23 filings, 27,222 chunks. Embedding that costs a few cents of OpenAI
+usage and no Gemini quota.
+
+Downloaded and converted files are gitignored. Only the scripts are versioned,
+so the corpus is always rebuilt rather than shipped.
 
 ## Evaluation
 
