@@ -10,22 +10,24 @@ Runs locally. Postgres, auth, and vector storage are hosted on Supabase; everyth
 
 ## Walkthroughs
 
-Two videos sit behind this build. The first is the project end to end; the
-second is the retrieval half of it, which is where most of the work since has
-gone.
+Two videos, in order. The first builds the agent; the second replaces the model
+behind it with an open one you host yourself, which is what `cloud/` in this
+repo does.
 
-**Building a Finance AI Agent App with Pydantic AI + RAG** — 33 minutes, first
-principles: RAG, chunking a 10-K, hybrid retrieval and re-ranking, the Pydantic
-AI agent loop, tool calls, the out-of-loop verifier, and what each part costs.
+**Part 1 — Building a Finance AI Agent App with Pydantic AI + RAG.** 33 minutes,
+first principles: RAG, chunking a 10-K, hybrid retrieval and re-ranking, the
+Pydantic AI agent loop, tool calls, the out-of-loop verifier, and what each part
+costs.
 
 [![Building a Finance AI Agent App with Pydantic AI + RAG](https://img.youtube.com/vi/71hV5jWe88Y/hqdefault.jpg)](https://youtu.be/71hV5jWe88Y)
 
-**The Complete Guide to Hybrid Search in RAG (BM25 + Embeddings + Reranker)** —
-why a dense index alone misses exact terms, what BM25 adds that cosine
-similarity cannot, and where a cross-encoder belongs in the pipeline. The
-retrieval stack described below follows it.
+**Part 2 — Open Source LLMs for Finance: Qwen 3.8, Hugging Face and RunPod.**
+Picking the model on Hugging Face, quantisation and FP8, dense against mixture
+of experts and why MoE disappointed on agentic work, renting an H100, weights to
+disk and then into VRAM with real timings, and a Microsoft DCF run end to end on
+the self-hosted model including where it got the assumptions wrong.
 
-[![The Complete Guide to Hybrid Search in RAG](https://img.youtube.com/vi/XvKiTfd6Xvo/hqdefault.jpg)](https://youtu.be/XvKiTfd6Xvo)
+[![Open Source LLMs for Finance: Qwen 3.8, Hugging Face and RunPod](https://img.youtube.com/vi/yt9nrim22Gg/hqdefault.jpg)](https://youtu.be/yt9nrim22Gg)
 
 ## Design rule
 
