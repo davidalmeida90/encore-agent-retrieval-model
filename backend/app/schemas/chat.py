@@ -118,6 +118,13 @@ class StreamRequest(BaseModel):
     # Which model answers this question. Unknown or missing values fall back to
     # the default rather than erroring, so a stale browser tab still works.
     model: str | None = None
+    # How this question finds filing text: the hybrid index, or SEC directly.
+    # Same fallback reasoning as `model`.
+    retrieval_mode: str | None = Field(default=None, validation_alias="retrievalMode")
+    # Whether the model may think first. Off is the default; see deps.py.
+    thinking: bool | None = None
+    # CAG only: which company to preload. Ignored by the other modes.
+    cag_ticker: str = Field(default="", validation_alias="cagTicker")
     model_config = ConfigDict(populate_by_name=True)
 
     thread_id: uuid.UUID = Field(validation_alias="threadId")

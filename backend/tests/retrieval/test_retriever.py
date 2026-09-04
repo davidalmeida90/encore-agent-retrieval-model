@@ -50,7 +50,8 @@ def _chunk(
 
 @patch("app.retrieval.retriever.get_surrounding_chunks")
 @patch("app.retrieval.retriever.get_chunks_by_ids")
-@patch("app.retrieval.retriever.full_text_search")
+@patch("app.retrieval.retriever.bm25_score_rows")
+@patch("app.retrieval.retriever.full_text_candidates")
 @patch("app.retrieval.retriever.semantic_search")
 @patch("app.retrieval.retriever.extract_fts_keywords")
 @patch("app.retrieval.retriever.embed_query")
@@ -58,7 +59,8 @@ def test_document_retriever_fuses_and_hydrates(
     mock_embed_query: MagicMock,
     mock_extract_fts_keywords: MagicMock,
     mock_semantic_search: MagicMock,
-    mock_full_text_search: MagicMock,
+    mock_full_text_candidates: MagicMock,
+    mock_bm25_score_rows: MagicMock,
     mock_get_chunks_by_ids: MagicMock,
     mock_get_surrounding_chunks: MagicMock,
 ) -> None:
@@ -68,10 +70,10 @@ def test_document_retriever_fuses_and_hydrates(
         RankedChunkHit(chunk_id=ID_A, rank=1, score=0.9),
         RankedChunkHit(chunk_id=ID_B, rank=2, score=0.8),
     ]
-    mock_full_text_search.return_value = [
-        RankedChunkHit(chunk_id=ID_B, rank=1, score=0.7),
-        RankedChunkHit(chunk_id=ID_A, rank=2, score=0.6),
-    ]
+    # The lexical leg now returns (id, tsvector) rows which BM25 orders, so
+    # what the retriever fuses is whatever score_rows returns.
+    mock_full_text_candidates.return_value = [(ID_B, "'servic':1"), (ID_A, "'iphon':1")]
+    mock_bm25_score_rows.return_value = [ID_B, ID_A]
 
     document = _document()
     chunk_a = _chunk(ID_A, chunk_index=5, text="iPhone revenue mix", document=document)
@@ -104,15 +106,16 @@ def test_document_retriever_fuses_and_hydrates(
         filters=SearchFilters(ticker="AAPL"),
     )
     mock_semantic_search.assert_called_once()
-    mock_full_text_search.assert_called_once()
+    mock_full_text_candidates.assert_called_once()
+    mock_bm25_score_rows.assert_called_once()
     semantic_kwargs = mock_semantic_search.call_args.kwargs
     assert semantic_kwargs["filters"] == SearchFilters(ticker="AAPL")
     assert semantic_kwargs["limit"] == 50
-    fts_args = mock_full_text_search.call_args.args
+    fts_args = mock_full_text_candidates.call_args.args
     assert fts_args[1] == "iPhone Services revenue"
 
 
-@patch("app.retrieval.retriever.full_text_search")
+@patch("app.retrieval.retriever.full_text_candidates")
 @patch("app.retrieval.retriever.semantic_search")
 @patch("app.retrieval.retriever.extract_fts_keywords")
 @patch("app.retrieval.retriever.embed_query")
@@ -120,12 +123,12 @@ def test_document_retriever_returns_empty_when_no_hits(
     mock_embed_query: MagicMock,
     mock_extract_fts_keywords: MagicMock,
     mock_semantic_search: MagicMock,
-    mock_full_text_search: MagicMock,
+    mock_full_text_candidates: MagicMock,
 ) -> None:
     mock_embed_query.return_value = [0.1] * 3
     mock_extract_fts_keywords.return_value = "nothing here"
     mock_semantic_search.return_value = []
-    mock_full_text_search.return_value = []
+    mock_full_text_candidates.return_value = []
 
     retriever = DocumentRetriever()
     passages = retriever.search("nothing here", session=MagicMock())

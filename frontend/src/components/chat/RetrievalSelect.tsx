@@ -11,47 +11,51 @@ import {
 import { api } from '@/lib/api'
 
 /**
- * Which model answers the next question.
+ * How the next question looks for filing text.
  *
- * Sits under the composer rather than in the header because it belongs to the
- * question you are about to ask, not to the app.
+ * Sits beside the model picker because it is the same kind of choice: it
+ * belongs to the question you are about to ask, and it changes the answer
+ * rather than the appearance of one.
  *
- * The choice is genuinely consequential rather than cosmetic: on the same DCF
- * question, Flash Lite spent 8,167 tokens and skipped the sensitivity table and
- * market comparison the loaded skill requires, while the reasoning model spent
- * 38,605 and produced both unprompted. Cheap is right for lookups; it is the
- * wrong default for judgement.
+ * The two modes fail in opposite directions, which is why both are offered
+ * rather than one being chosen for you. Measured over the same six questions:
+ *
+ *   RAG      98k input tokens   21 citations   limited to the indexed corpus
+ *   agentic  798k input tokens   9 citations   reaches any public filer
+ *
+ * Agentic costs roughly seven times as much per question, because whole filings
+ * pass through a sub-model rather than being looked up in an index. It earns
+ * that when the company you are asking about was never ingested, and only then.
  */
 
-export type ModelChoice = {
+export type RetrievalChoice = {
   id: string
   label: string
   hint: string
   default: boolean
-  /** Runs on a server you started, rather than a hosted API. */
-  self_hosted?: boolean
+  /** The thing worth knowing before picking this one. */
+  caveat: string | null
 }
 
-const STORAGE_KEY = 'encore.model'
+const STORAGE_KEY = 'encore.retrieval'
 
-type ModelSelectProps = {
+type RetrievalSelectProps = {
   value: string | null
   onChange: (id: string) => void
   disabled?: boolean
 }
 
-export function ModelSelect({ value, onChange, disabled }: ModelSelectProps) {
-  const [models, setModels] = useState<ModelChoice[]>([])
+export function RetrievalSelect({ value, onChange, disabled }: RetrievalSelectProps) {
+  const [modes, setModes] = useState<RetrievalChoice[]>([])
 
   useEffect(() => {
     let cancelled = false
     api
-      .get<ModelChoice[]>('/chat/models')
+      .get<RetrievalChoice[]>('/chat/retrieval-modes')
       .then((list) => {
         if (cancelled) return
-        setModels(list)
+        setModes(list)
         if (!value) {
-          // Remembered choice wins, else whichever the backend marks default.
           const saved = localStorage.getItem(STORAGE_KEY)
           const known = list.find((m) => m.id === saved)
           onChange(known?.id ?? list.find((m) => m.default)?.id ?? list[0]?.id)
@@ -71,8 +75,8 @@ export function ModelSelect({ value, onChange, disabled }: ModelSelectProps) {
     onChange(id)
   }
 
-  const active = models.find((m) => m.id === value)
-  if (models.length === 0) return null
+  const active = modes.find((m) => m.id === value)
+  if (modes.length === 0) return null
 
   return (
     <DropdownMenu>
@@ -83,31 +87,31 @@ export function ModelSelect({ value, onChange, disabled }: ModelSelectProps) {
           disabled={disabled}
           className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
         >
-          {active?.label ?? 'Model'}
+          {active?.label ?? 'Retrieval'}
           <ChevronDown className="size-3" aria-hidden />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-80">
-        {models.map((model) => (
+        {modes.map((mode) => (
           <DropdownMenuItem
-            key={model.id}
-            onClick={() => select(model.id)}
+            key={mode.id}
+            onClick={() => select(mode.id)}
             className="flex-col items-start gap-0.5 py-2"
           >
             <span className="flex w-full items-center gap-2 text-sm font-medium">
-              {model.label}
-              {model.self_hosted ? (
-                <span className="rounded bg-muted px-1.5 py-px text-[10px] font-normal text-muted-foreground">
-                  needs a local server
-                </span>
-              ) : null}
-              {model.id === value ? (
+              {mode.label}
+              {mode.id === value ? (
                 <Check className="ml-auto size-3.5 text-brand-600" aria-hidden />
               ) : null}
             </span>
             <span className="text-[11px] leading-snug text-muted-foreground">
-              {model.hint}
+              {mode.hint}
             </span>
+            {mode.caveat ? (
+              <span className="text-[11px] leading-snug text-amber-700 dark:text-amber-500">
+                {mode.caveat}
+              </span>
+            ) : null}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

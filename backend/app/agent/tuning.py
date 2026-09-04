@@ -33,6 +33,77 @@ GEMINI_FREE_TIER_DAILY_REQUESTS = 500
 GEMINI_REQUEST_TIMEOUT_SECONDS = 120.0
 GEMINI_CONNECT_TIMEOUT_SECONDS = 10.0
 
+# A self-hosted model gets a longer leash. Decode is bandwidth bound and its
+# time is linear in output tokens, so a thinking-mode answer of several thousand
+# tokens legitimately takes minutes on a mid-range card. The measured DCF on
+# Gemini produced 1,123 output tokens; thinking could be 5x that.
+#
+# Connect stays short: a pod that is up answers immediately, and one that is
+# still loading weights should fail fast rather than look like a slow answer.
+LOCAL_REQUEST_TIMEOUT_SECONDS = 600.0
+LOCAL_CONNECT_TIMEOUT_SECONDS = 10.0
+
+# Qwen3.x ships thinking mode ON. Measured on this pod, asking for one tool call:
+#
+#   thinking off      61 output tokens   1.2s
+#   thinking on    1,833 output tokens   9.6s     -> identical tool call
+#
+# Decode is bandwidth bound and linear in output tokens, so thinking is a 30x
+# multiplier on the part that actually costs time. Off by default for the same
+# reason flash-lite is the default model: most questions here are lookups and
+# retrieval, where the reasoning buys nothing.
+#
+# Worth turning on for valuation, where models.py records flash-lite skipping
+# the sensitivity table and market comparison that the skill mandates.
+# None means "do not send the switch at all". Qwen3.6 has enable_thinking in its
+# chat template; Qwen3-30B-Instruct-2507 does not, and passing a kwarg the
+# template never reads is a needless way to break a request.
+LOCAL_THINKING_ENABLED: bool | None = False
+
+# Let a self-hosted model emit several tool calls in one round?
+#
+# Gemini's wire format has no such switch and emits one call per turn, so the
+# harness runs one round per call. OpenAI's format has the switch and it
+# defaults to ALLOWED, which Qwen takes full advantage of: measured on the
+# question "what was Apple's capital expenditure in fiscal 2025", it produced
+#
+#     2 model requests   and   21 tool calls
+#
+# Every result lands in history, so on retrieval questions, where each result is
+# a passage, a single round is enough to blow the per-question ceiling. The
+# three questions that failed at 100k+ tokens all failed this way.
+#
+# TESTED, and False is worse. Forcing one call per round does not stop the model
+# wanting N calls; it spreads them over N rounds, and every round re-sends the
+# whole history. Same four questions, concurrently:
+#
+#     parallel ON    capex 2 requests, 7,908 tokens, PASS
+#     parallel OFF   capex blew the 100k ceiling,    FAIL  (all four failed)
+#
+# One round carrying twenty results is far cheaper than twenty rounds each
+# re-sending everything before them. Left ON, because the real fault is that it
+# calls at all after the first result answers the question, and that is a model
+# behaviour no wire-protocol switch fixes.
+LOCAL_PARALLEL_TOOL_CALLS = True
+
+# After how many tool results should the model be reminded that it can answer?
+#
+# Measured on Qwen3.6-35B, "What was Apple's capital expenditure in fiscal 2025":
+# it got the figure from XBRL in round 1 and then spent twelve more rounds
+# verifying it against the filing text. Two searches, four read_chunk, four
+# read_surrounding_chunks, two more searches. Thirteen distinct calls, ZERO
+# repeats: not a loop, and no guard catches it, because every single call is
+# individually reasonable.
+#
+# What it lacks is a sense of enough. Gemini answers the same question in two
+# rounds. This is instruction fade, which SystemReminders exists to counter:
+# a reminder re-injected at the tail of the request, behind a CachePoint so the
+# cached prefix stays byte-identical.
+#
+# 4 is above what a legitimate two-company comparison needs (one XBRL call plus
+# one search each) and well below the runaway.
+REMIND_TO_ANSWER_AFTER_TOOL_RESULTS = 4
+
 # Ceiling for a SINGLE question. Observed costs: a comps answer about 4,000
 # tokens, a simple XBRL lookup about 15,000, a DCF on a reasoning model about
 # 40,000, and a two-company question mixing XBRL figures with cited 10-K prose
@@ -43,7 +114,17 @@ GEMINI_CONNECT_TIMEOUT_SECONDS = 10.0
 # actual runaway this guards against spent 112,000 retrying a broken comps call,
 # and MAX_TOOL_FAILURES / MAX_IDENTICAL_CALLS below now catch that class directly
 # and far earlier, so this ceiling does not have to sit tight enough to catch it.
-PER_QUESTION_TOKEN_CEILING = 150_000
+PER_QUESTION_TOKEN_CEILING = 100_000
+
+# CAG breaks that ceiling by design rather than by accident: the whole filing is
+# the point, and one NVIDIA 10-K measured 196,676 input tokens on the first
+# question. 100k is right for RAG, where anything approaching it means the model
+# is looping. Applying it to CAG just refuses the mode.
+#
+# Set from the model's context window, not from thrift: 262,144 is what
+# Qwen3.8-27B advertises and what Gemini comfortably exceeds, and a turn that
+# wants more than that has loaded a second filing, which the mode forbids.
+CAG_QUESTION_TOKEN_CEILING = 400_000
 
 # No "minute" budget window exists in the harness, so the 250,000
 # input-tokens-per-minute free-tier ceiling cannot be enforced here. Pacing

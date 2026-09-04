@@ -49,3 +49,6 @@ logs/
 dev_token.txt
 *token*.txt
 .session
+
+# Cloud provider keys for cloud/serve_on_runpod.py
+cloud/.env

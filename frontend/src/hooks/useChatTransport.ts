@@ -47,6 +47,9 @@ async function consumeStatusStream(
 export function useChatTransport(
   threadId: string,
   model?: string | null,
+  retrievalMode?: string | null,
+  thinking?: boolean,
+  cagTicker?: string,
   onStatus?: (status: PipelineStatus) => void,
 ) {
   return useMemo(
@@ -58,7 +61,7 @@ export function useChatTransport(
           return token ? { Authorization: `Bearer ${token}` } : {}
         },
         prepareSendMessagesRequest: ({ messages }) => ({
-          body: { threadId, messages, model },
+          body: { threadId, messages, model, retrievalMode, thinking, cagTicker },
         }),
         fetch: async (input, init) => {
           const response = await fetch(input, init)
@@ -77,6 +80,6 @@ export function useChatTransport(
           })
         },
       }),
-    [threadId, model, onStatus],
+    [threadId, model, retrievalMode, thinking, cagTicker, onStatus],
   )
 }

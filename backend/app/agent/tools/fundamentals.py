@@ -46,7 +46,7 @@ from pydantic_ai import RunContext
 
 from app.agent.deps import DocumentAgentDeps
 from app.agent.status import emit_tool_start
-from app.agent.tools._guards import _record_failure, _too_many_repeats
+from app.agent.tools._guards import _record_failure, _too_many_repeats, remember
 from vendor.loaders._fundamental_schema import SEC_CONCEPT_MAP
 
 
@@ -60,9 +60,25 @@ _EXTRA_TAGS: dict[str, list[str]] = {
         "AvailableForSaleSecuritiesDebtSecuritiesNoncurrent",
     ],
     "rnd": ["ResearchAndDevelopmentExpense"],
+    # Filers split D&A across concepts, and the two below are only the tags the
+    # cash-flow statement uses when it reports one combined line. Microsoft does
+    # not: it files `Depreciation` separately, so this list returned nothing for
+    # MSFT and a DCF was left inventing D&A against $116B of sourced capex. That
+    # is the input that decides terminal free cash flow.
     "ebitda_proxy_da": [
         "DepreciationDepletionAndAmortization",
         "DepreciationAmortizationAndAccretionNet",
+        "DepreciationAndAmortization",
+        "Depreciation",
+    ],
+    # Net debt for a DCF should net off what the company can actually spend, and
+    # for a cash-rich filer most of that sits in short-term investments rather
+    # than in cash: Microsoft reports $20.9B of cash against $76.8B including
+    # short-term investments. Kept separate from `cash` so the plain cash line
+    # stays exactly what it says.
+    "cash_and_short_term_investments": [
+        "CashCashEquivalentsAndShortTermInvestments",
+        "CashAndCashEquivalentsAtCarryingValue",
     ],
 }
 
@@ -76,8 +92,19 @@ def _facts_for(ticker: str) -> dict:
 
 
 def _annual_series(facts: dict, tags: list[str], years: int) -> list[dict[str, Any]]:
-    """Pull annual (FY, 10-K) values for the first tag that has them."""
+    """Pull annual (FY, 10-K) values, merged across tags in priority order.
+
+    Companies migrate concepts mid-life. Boeing reported revenue under `Revenues`
+    through 2019 and under `RevenueFromContractWithCustomerExcludingAssessedTax`
+    after, so stopping at the first tag holding any data returned one row from
+    2019 and nothing since. Every recent Boeing figure then reached the model
+    with no fiscal year attached, and it labelled FY2024 revenue as FY2025.
+
+    Tags stay in priority order: the first tag that covers a year owns it, and
+    later tags only fill years the earlier ones never reported.
+    """
     gaap = facts.get("facts", {}).get("us-gaap", {})
+    merged: dict[str, dict[str, Any]] = {}
     for tag in tags:
         node = gaap.get(tag)
         if not node:
@@ -99,14 +126,17 @@ def _annual_series(facts: dict, tags: list[str], years: int) -> list[dict[str, A
                         "val": r.get("val"),
                         "unit": "USD",
                     }
-        if rows:
-            out = sorted(rows.values(), key=lambda x: x["fy"], reverse=True)[:years]
-            return [{"fiscal_year": r["fy"],
-                     "value_billions": round(r["val"] / 1e9, 4) if isinstance(r["val"], (int, float)) else None,
-                     "value_raw": r["val"],
-                     "period_end": r["end"]}
-                    for r in out]
-    return []
+        for fy, row in rows.items():
+            merged.setdefault(fy, row)
+
+    if not merged:
+        return []
+    out = sorted(merged.values(), key=lambda x: x["fy"], reverse=True)[:years]
+    return [{"fiscal_year": r["fy"],
+             "value_billions": round(r["val"] / 1e9, 4) if isinstance(r["val"], (int, float)) else None,
+             "value_raw": r["val"],
+             "period_end": r["end"]}
+            for r in out]
 
 async def get_sec_financials(
     ctx: RunContext[DocumentAgentDeps],
@@ -144,9 +174,8 @@ async def get_sec_financials(
     history. For anything outside this schema (balance-sheet detail such as
     PropertyPlantAndEquipmentNet or AssetsCurrent) use `get_xbrl_tag`.
     """
-    if (stop := _too_many_repeats(ctx, "get_sec_financials",
-                                  {"t": ticker, "f": sorted(fields), "q": freq,
-                                   "y": years_back})):
+    guard_args = {"t": ticker, "f": sorted(fields), "q": freq, "y": years_back}
+    if (stop := _too_many_repeats(ctx, "get_sec_financials", guard_args)):
         return stop
     emit_tool_start(ctx.deps, "get_sec_financials", f"{ticker.upper()} {freq}: {','.join(fields)}")
     import datetime as _dt
@@ -208,7 +237,12 @@ async def get_sec_financials(
         prev = None
         for ts, v in col.items():
             if prev is None or abs(float(v) - prev) > 1e-6:
-                label = labels.get(round(float(v), 2), {})
+                label = labels.get(round(float(v), 2)) or {
+                    "fiscal_year": None,
+                    "FISCAL_YEAR_UNKNOWN": "Could not match this value to a "
+                                           "reported fiscal year. Do not state a "
+                                           "year for it; read the filing instead.",
+                }
                 steps.append({**label,
                               "value_billions": round(float(v) / 1e9, 4),
                               # the first step is the value already standing when
@@ -231,7 +265,10 @@ async def get_sec_financials(
                     "that had just closed. Indexed filing text may be older than "
                     "this, so a mismatch means a newer fiscal year, not an error.",
         }
-    return json.dumps(out, default=str)
+    # Cached so an identical repeat is answered with this data rather than an
+    # error, which is what used to send some models into a retry loop.
+    return remember(ctx, "get_sec_financials", guard_args,
+                    json.dumps(out, default=str))
 
 async def get_xbrl_tag(
     ctx: RunContext[DocumentAgentDeps],
@@ -263,5 +300,36 @@ async def get_xbrl_tag(
                            "UNITS": "USD billions"}
     for tag in [t.strip() for t in tags.split(",") if t.strip()]:
         series = _annual_series(facts, [tag], years)
-        out[tag] = series or {"error": f"tag '{tag}' not reported by {tick}"}
+        if series:
+            out[tag] = series
+            continue
+        # Filers split the same economics across different concepts, and a model
+        # asked for D&A has no way to know which one this filer chose. Microsoft
+        # reports `Depreciation`, not `DepreciationDepletionAndAmortization`, so
+        # the obvious request came back empty and a DCF was left inventing D&A
+        # against $116B of sourced capex. Try the siblings, and say which tag
+        # actually answered so the substitution is visible rather than silent.
+        alternates = [
+            other
+            for family in CONCEPT_TAGS.values() if tag in family
+            for other in family if other != tag
+        ]
+        for candidate in alternates:
+            series = _annual_series(facts, [candidate], years)
+            if series:
+                out[tag] = {
+                    "SUBSTITUTED_TAG": candidate,
+                    "note": f"{tick} does not report '{tag}'. Values below are "
+                            f"'{candidate}', the closest concept it does report. "
+                            f"State the tag you actually used.",
+                    "values": series,
+                }
+                break
+        else:
+            out[tag] = {
+                "error": f"tag '{tag}' not reported by {tick}",
+                "tried": alternates[:6],
+                "hint": "Do not substitute an assumed value. Either find another "
+                        "reported tag, or say the figure is unavailable.",
+            }
     return json.dumps(out, default=str)

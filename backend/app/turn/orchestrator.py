@@ -54,6 +54,9 @@ async def run_turn(
     thread_title: str,
     retriever: DocumentRetriever,
     model_name: str | None = None,
+    retrieval_mode: str | None = None,
+    thinking: bool | None = None,
+    cag_ticker: str = "",
 ) -> AsyncIterator[str]:
     loop = asyncio.get_running_loop()
     query = text_from_parts(user_message.parts).strip()
@@ -80,6 +83,9 @@ async def run_turn(
             thread_id=thread_id,
             user_id=user.id,
             on_status=on_status,
+            retrieval_mode=retrieval_mode,
+            thinking=thinking,
+            cag_ticker=cag_ticker,
         )
         counters = telemetry.start_turn()
         # Attempt 2 previously re-sent the identical query with no hint about what
@@ -108,7 +114,9 @@ async def run_turn(
             yield event
 
         grounded = prune_unreferenced_citations(grounded)
-        validation = await GroundingValidator().validate(grounded, registry)
+        validation = await GroundingValidator().validate(
+            grounded, registry, tool_outputs=deps.tool_outputs
+        )
         telemetry.log_turn(counters, thread_id=str(thread_id), query=query)
 
         # Report the verdict either way. The gate decides whether an answer is

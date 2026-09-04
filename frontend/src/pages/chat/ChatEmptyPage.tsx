@@ -24,6 +24,9 @@ export function ChatEmptyPage() {
   const { createNewThread } = useThreads()
   const [isStarting, setIsStarting] = useState(false)
   const [model, setModel] = useState<string | null>(null)
+  const [retrievalMode, setRetrievalMode] = useState<string | null>(null)
+  const [thinking, setThinking] = useState(false)
+  const [cagTicker, setCagTicker] = useState('')
 
   async function startConversation(prompt?: string) {
     if (isStarting) return
@@ -32,7 +35,12 @@ export function ChatEmptyPage() {
       const id = await createNewThread()
       // The model choice travels with the first message: it is a property of the
       // question being asked, not of a thread that does not exist yet.
-      navigate(`/chats/${id}`, prompt ? { state: { initialPrompt: prompt, model } } : undefined)
+      navigate(
+        `/chats/${id}`,
+        prompt
+          ? { state: { initialPrompt: prompt, model, retrievalMode, thinking, cagTicker } }
+          : undefined,
+      )
     } finally {
       setIsStarting(false)
     }
@@ -61,6 +69,12 @@ export function ChatEmptyPage() {
           status={isStarting ? 'submitted' : 'ready'}
           model={model}
           onModelChange={setModel}
+          retrievalMode={retrievalMode}
+          onRetrievalModeChange={setRetrievalMode}
+          thinking={thinking}
+          onThinkingChange={setThinking}
+          cagTicker={cagTicker}
+          onCagTickerChange={setCagTicker}
           onSend={(text) => void startConversation(text)}
           onStop={() => undefined}
         />

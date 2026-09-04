@@ -8,6 +8,7 @@ import uvicorn
 from app.api.auth import router as auth_router
 from app.api.chat import router as chat_router
 from app.api.corpus import router as corpus_router
+from app.api.runtime import router as runtime_router
 from app.api.tools import router as tools_router
 from app.config import settings
 
@@ -39,6 +40,7 @@ app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(tools_router)
 app.include_router(corpus_router)
+app.include_router(runtime_router)
 
 app.add_middleware(
     CORSMiddleware,

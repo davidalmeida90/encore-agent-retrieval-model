@@ -1,0 +1,314 @@
+[
+ {
+  "chunk_id": "77092acb-0554-49d5-9152-0fa6b34e5b12",
+  "ticker": "AAPL",
+  "style": "verbatim",
+  "question": "What was the total amount of Proceeds from maturities of marketable securities for AAPL in the most recent period?"
+ },
+ {
+  "chunk_id": "77092acb-0554-49d5-9152-0fa6b34e5b12",
+  "ticker": "AAPL",
+  "style": "paraphrased",
+  "question": "How much cash did Apple receive from the expiration of its investment holdings during the latest reported timeframe?"
+ },
+ {
+  "chunk_id": "69964c9d-d4b1-4e4c-847d-733379aa5cb6",
+  "ticker": "AMZN",
+  "style": "verbatim",
+  "question": "What were the gains (losses) recorded by AMZN in connection with the settlement and remeasurement of intercompany balances in 2023, 2024, and 2025?"
+ },
+ {
+  "chunk_id": "69964c9d-d4b1-4e4c-847d-733379aa5cb6",
+  "ticker": "AMZN",
+  "style": "paraphrased",
+  "question": "How much did AMZN report in profit or loss from settling and adjusting internal corporate debts across different monetary units during the last three fiscal years?"
+ },
+ {
+  "chunk_id": "23d84568-1cb5-49cc-a8a8-fdd5eaec63e2",
+  "ticker": "GOOGL",
+  "style": "verbatim",
+  "question": "What was the Stock-based compensation expense for GOOGL for the Year Ended December 31, 2024?"
+ },
+ {
+  "chunk_id": "23d84568-1cb5-49cc-a8a8-fdd5eaec63e2",
+  "ticker": "GOOGL",
+  "style": "paraphrased",
+  "question": "How much did Alphabet spend on equity-linked employee incentives during the most recent twelve-month period?"
+ },
+ {
+  "chunk_id": "946d8c74-c67c-49c3-a05c-d3f8ef840f2b",
+  "ticker": "JPM",
+  "style": "verbatim",
+  "question": "What is the total value for JPM's 'Trading liabilities - debt, short-term and all other interest-bearing liabilities' within the U.S. category?"
+ },
+ {
+  "chunk_id": "946d8c74-c67c-49c3-a05c-d3f8ef840f2b",
+  "ticker": "JPM",
+  "style": "paraphrased",
+  "question": "How much debt and other short-term obligations does JPM hold domestically?"
+ },
+ {
+  "chunk_id": "52bbff4f-8255-47a9-8f58-2787130a2110",
+  "ticker": "META",
+  "style": "verbatim",
+  "question": "Who served as the Chairman and Chief Executive Officer (Principal Executive Officer) for Meta on January 29, 2025?"
+ },
+ {
+  "chunk_id": "52bbff4f-8255-47a9-8f58-2787130a2110",
+  "ticker": "META",
+  "style": "paraphrased",
+  "question": "Which individual held the top leadership position at the firm when the latest annual report was signed?"
+ },
+ {
+  "chunk_id": "512979cf-4e16-4f3c-b159-7e845b13b23a",
+  "ticker": "MSFT",
+  "style": "verbatim",
+  "question": "What are the three specific policies and procedures that constitute MSFT's internal control over financial reporting?"
+ },
+ {
+  "chunk_id": "512979cf-4e16-4f3c-b159-7e845b13b23a",
+  "ticker": "MSFT",
+  "style": "paraphrased",
+  "question": "What are the primary functions that the accounting oversight systems at Microsoft must perform to ensure the integrity of their fiscal documentation?"
+ },
+ {
+  "chunk_id": "eb724d15-7caa-4fd6-bca9-f58c38f29143",
+  "ticker": "NFLX",
+  "style": "verbatim",
+  "question": "What was the primary driver for the increase in interest expense for Netflix for the year ended December 31, 2025 as compared to the year ended December 31, 2024?"
+ },
+ {
+  "chunk_id": "eb724d15-7caa-4fd6-bca9-f58c38f29143",
+  "ticker": "NFLX",
+  "style": "paraphrased",
+  "question": "What caused the rise in borrowing costs for Netflix during the most recent fiscal period compared to the prior year?"
+ },
+ {
+  "chunk_id": "dc71c440-b502-4303-9abf-ab8b3e02e19a",
+  "ticker": "NVDA",
+  "style": "verbatim",
+  "question": "For NVDA, what is the total balance of investments as of January 25, 2026, that are subject to short-term lock-up restrictions on the ability to sell?"
+ },
+ {
+  "chunk_id": "dc71c440-b502-4303-9abf-ab8b3e02e19a",
+  "ticker": "NVDA",
+  "style": "paraphrased",
+  "question": "How much capital is currently tied up in NVDA holdings that cannot be liquidated immediately due to temporary contractual sales prohibitions?"
+ },
+ {
+  "chunk_id": "ab97f4b5-6f0b-449a-9ea3-5e8635321806",
+  "ticker": "TSLA",
+  "style": "verbatim",
+  "question": "What is the date of the Waiver to Fifth Amended and Restated Investor's Rights Agreement between TSLA and certain holders of the Registrant's capital stock?"
+ },
+ {
+  "chunk_id": "ab97f4b5-6f0b-449a-9ea3-5e8635321806",
+  "ticker": "TSLA",
+  "style": "paraphrased",
+  "question": "When was the legal document regarding shareholder privileges finalized for the electric vehicle manufacturer?"
+ },
+ {
+  "chunk_id": "5cb9ba19-d09a-4152-98fa-89c8d3e8cddf",
+  "ticker": "WMT",
+  "style": "verbatim",
+  "question": "What are the specific federal, state and local laws and regulations that Walmart's health and wellness operations in the U.S. are subject to regarding the practice of the professions of pharmacy and optometry?"
+ },
+ {
+  "chunk_id": "5cb9ba19-d09a-4152-98fa-89c8d3e8cddf",
+  "ticker": "WMT",
+  "style": "paraphrased",
+  "question": "Which legal and administrative frameworks govern the medical and pharmaceutical activities conducted by Walmart within the domestic market?"
+ },
+ {
+  "chunk_id": "df047e94-3689-43b9-91e8-4ba96a1e1ecb",
+  "ticker": "AAPL",
+  "style": "verbatim",
+  "question": "On what date did Monica Lozano, Ronald D. Sugar, and Susan L. Wagner sign the AAPL FY2024 filing in their capacity as Director?"
+ },
+ {
+  "chunk_id": "df047e94-3689-43b9-91e8-4ba96a1e1ecb",
+  "ticker": "AAPL",
+  "style": "paraphrased",
+  "question": "When did the three board members listed in the Apple annual report officially endorse the document?"
+ },
+ {
+  "chunk_id": "476e080f-8590-456b-83f3-08c4283326c1",
+  "ticker": "AMZN",
+  "style": "verbatim",
+  "question": "Under what conditions does Amazon classify a build-to-suit lease arrangement as a financing obligation instead of a lease?"
+ },
+ {
+  "chunk_id": "476e080f-8590-456b-83f3-08c4283326c1",
+  "ticker": "AMZN",
+  "style": "paraphrased",
+  "question": "What criteria must Amazon meet to treat a property development contract as a debt-like liability rather than a standard rental agreement?"
+ },
+ {
+  "chunk_id": "edaaa43a-d4b9-4d1b-8a13-1b67909a46d6",
+  "ticker": "GOOGL",
+  "style": "verbatim",
+  "question": "What are the potential consequences for Alphabet Inc. if customers and partners discontinue the use of products, services, and technologies due to intellectual property infringement claims?"
+ },
+ {
+  "chunk_id": "edaaa43a-d4b9-4d1b-8a13-1b67909a46d6",
+  "ticker": "GOOGL",
+  "style": "paraphrased",
+  "question": "How might GOOGL's financial performance and market position suffer if legal disputes regarding proprietary rights force clients to stop utilizing the firm's digital tools?"
+ },
+ {
+  "chunk_id": "8c9c0313-603d-49d6-adb0-facada0f65b3",
+  "ticker": "JPM",
+  "style": "verbatim",
+  "question": "What are the specific characteristics that may qualify a loan as Alt-A at JPM?"
+ },
+ {
+  "chunk_id": "8c9c0313-603d-49d6-adb0-facada0f65b3",
+  "ticker": "JPM",
+  "style": "paraphrased",
+  "question": "What criteria does JPMorgan Chase use to categorize a home loan as a riskier alternative to standard lending?"
+ },
+ {
+  "chunk_id": "6bf13124-eb5d-456e-ada3-757f0051abc1",
+  "ticker": "META",
+  "style": "verbatim",
+  "question": "What is the total face amount of long-term debt for Meta as of August 2024 compared to the prior period?"
+ },
+ {
+  "chunk_id": "6bf13124-eb5d-456e-ada3-757f0051abc1",
+  "ticker": "META",
+  "style": "paraphrased",
+  "question": "How much has the aggregate principal value of Meta's outstanding borrowings changed between the two reporting dates?"
+ },
+ {
+  "chunk_id": "653fd1d0-2659-4e10-b2aa-fa51ff5cbeb8",
+  "ticker": "MSFT",
+  "style": "verbatim",
+  "question": "Does Microsoft consider the information posted on social media channels to be material to investors?"
+ },
+ {
+  "chunk_id": "653fd1d0-2659-4e10-b2aa-fa51ff5cbeb8",
+  "ticker": "MSFT",
+  "style": "paraphrased",
+  "question": "How does MSFT view the significance of the content shared through digital networking platforms regarding its impact on shareholders?"
+ },
+ {
+  "chunk_id": "1d80b121-28f9-4d8d-8b90-3d4c84f53e15",
+  "ticker": "NFLX",
+  "style": "verbatim",
+  "question": "What were the primary factors that caused revenues for NFLX for the year ended December 31, 2025 to increase 16% as compared to the year ended December 31, 2024?"
+ },
+ {
+  "chunk_id": "1d80b121-28f9-4d8d-8b90-3d4c84f53e15",
+  "ticker": "NFLX",
+  "style": "paraphrased",
+  "question": "What specific business drivers contributed to the double-digit top-line expansion reported by Netflix during the most recent fiscal period?"
+ },
+ {
+  "chunk_id": "2adbd78e-0f96-45c5-82ff-f371b63f0324",
+  "ticker": "NVDA",
+  "style": "verbatim",
+  "question": "What was the expense recorded by NVDA in fiscal year 2024 for inventory purchase obligations in excess of current demand projections, supplier charges, and penalties related to cancellations and underutilization?"
+ },
+ {
+  "chunk_id": "2adbd78e-0f96-45c5-82ff-f371b63f0324",
+  "ticker": "NVDA",
+  "style": "paraphrased",
+  "question": "How much did NVDA spend during the most recent annual period on costs associated with excess supply commitments, vendor fees, and contract termination charges?"
+ },
+ {
+  "chunk_id": "33f42c4e-7805-4971-9e83-6f026967b9de",
+  "ticker": "TSLA",
+  "style": "verbatim",
+  "question": "How did the OBBBA enacted on July 4, 2025, modify the IRA incentives for TSLA?"
+ },
+ {
+  "chunk_id": "33f42c4e-7805-4971-9e83-6f026967b9de",
+  "ticker": "TSLA",
+  "style": "paraphrased",
+  "question": "What are the potential financial consequences for Tesla resulting from the updated federal legislation passed in mid-2025 that tightened qualification standards and shortened benefit periods?"
+ },
+ {
+  "chunk_id": "72bea9e7-934b-430b-8855-b32cd5bd207a",
+  "ticker": "WMT",
+  "style": "verbatim",
+  "question": "What is the nature of the indemnification Walmart has agreed to provide regarding the Asda Equal Value Claims?"
+ },
+ {
+  "chunk_id": "72bea9e7-934b-430b-8855-b32cd5bd207a",
+  "ticker": "WMT",
+  "style": "paraphrased",
+  "question": "To what extent is Walmart financially responsible for the ongoing labor-related legal disputes involving its former British supermarket chain?"
+ },
+ {
+  "chunk_id": "4a37a6b1-bbec-4b6a-89fa-a2c94badbe08",
+  "ticker": "AAPL",
+  "style": "verbatim",
+  "question": "What was the total Operating income/(loss) for Apple in 2025?"
+ },
+ {
+  "chunk_id": "4a37a6b1-bbec-4b6a-89fa-a2c94badbe08",
+  "ticker": "AAPL",
+  "style": "paraphrased",
+  "question": "How much profit did the tech firm generate from its primary business activities during the most recent fiscal period?"
+ },
+ {
+  "chunk_id": "212012d2-3d5d-44ca-b49b-efd9c5e689c5",
+  "ticker": "AMZN",
+  "style": "verbatim",
+  "question": "What was the cash consideration, net of cash acquired, for Amazon's acquisition of MGM Holdings Inc. on March 17, 2022?"
+ },
+ {
+  "chunk_id": "212012d2-3d5d-44ca-b49b-efd9c5e689c5",
+  "ticker": "AMZN",
+  "style": "paraphrased",
+  "question": "How much money did the firm spend to purchase the movie studio business in the first quarter of two years ago?"
+ },
+ {
+  "chunk_id": "b39eed9d-8132-4cd4-b45f-4d809730629b",
+  "ticker": "GOOGL",
+  "style": "verbatim",
+  "question": "What was the total amount of material purchase commitments and other contractual obligations for Alphabet Inc. as of December 31, 2024?"
+ },
+ {
+  "chunk_id": "b39eed9d-8132-4cd4-b45f-4d809730629b",
+  "ticker": "GOOGL",
+  "style": "paraphrased",
+  "question": "How much money is Alphabet Inc. contractually required to spend on future supply and service agreements according to the year-end 2024 figures?"
+ },
+ {
+  "chunk_id": "4c61e4de-11ec-4337-a3d4-b36a33204b48",
+  "ticker": "JPM",
+  "style": "verbatim",
+  "question": "What was the 9.36 percentage for JPM in the current period compared to the 8.90 percentage in the prior period?"
+ },
+ {
+  "chunk_id": "4c61e4de-11ec-4337-a3d4-b36a33204b48",
+  "ticker": "JPM",
+  "style": "paraphrased",
+  "question": "How did the return metric for JPMorgan Chase shift from the previous year's 5.14 figure to the most recent 5.50 result?"
+ },
+ {
+  "chunk_id": "124d977b-b726-4083-ae68-425cbe6b579e",
+  "ticker": "META",
+  "style": "verbatim",
+  "question": "Who is the trustee for the First Supplemental Indenture, dated as of August 9, 2022, between Meta Platforms, Inc. and U.S. Bank Trust Company, National Association?"
+ },
+ {
+  "chunk_id": "124d977b-b726-4083-ae68-425cbe6b579e",
+  "ticker": "META",
+  "style": "paraphrased",
+  "question": "Which financial institution serves as the fiduciary for the debt agreement Meta Platforms, Inc. entered into during the summer of 2022?"
+ },
+ {
+  "chunk_id": "6831fe6e-7bda-4250-893d-b58d3f1543fb",
+  "ticker": "MSFT",
+  "style": "verbatim",
+  "question": "For what general corporate purposes does MSFT issue debt?"
+ },
+ {
+  "chunk_id": "6831fe6e-7bda-4250-893d-b58d3f1543fb",
+  "ticker": "MSFT",
+  "style": "paraphrased",
+  "question": "What are the primary ways Microsoft utilizes the cash raised from borrowing?"
+ }
+]

@@ -10,8 +10,27 @@ a way the model cannot detect from inside the loop:
    get_sec_financials with byte-identical arguments seven times because the model
    disbelieved the number rather than because anything was wrong.
 
-Guard 1 catches the first, guard 2 catches the second. Both return a STOP payload
-telling the model to report what it has instead of calling again.
+Guard 1 catches the first, guard 2 catches the second.
+
+## Why guard 2 returns DATA and not an error
+It used to answer a repeat with `{"error": "STOP: already called N times"}`.
+Measured against a self-hosted Qwen3.6-35B on 2026-08-29, that made the looping
+worse rather than better:
+
+    round 1  get_sec_financials(AAPL, capex, annual, 4)   -> the answer
+    round 2  identical call                               -> {"error": "STOP..."}
+    round 3  identical call
+    round 4  identical call
+
+Read from inside the loop, that is rational. The model asked for data, the tool
+reported a failure, and retrying a failed tool is what a well-trained agent
+does. The guard was teaching the behaviour it existed to prevent.
+
+So a repeat now returns the SAME payload the first call produced, with a note
+attached. The model gets what it asked for, has nothing to retry, and the
+history costs one cached string instead of another round trip. Gemini never
+tripped this, which is exactly why it went unnoticed: one model tolerated a
+badly shaped error and another did not.
 """
 
 from __future__ import annotations
@@ -47,10 +66,29 @@ def _record_failure(ctx: Any, tool: str) -> None:
 MAX_IDENTICAL_CALLS = tuning.MAX_IDENTICAL_CALLS
 
 _repeats: dict[tuple[str, str, str], int] = {}
+# What the first identical call returned, so a repeat can be answered with the
+# data rather than an error. Keyed the same way as _repeats.
+_results: dict[tuple[str, str, str], str] = {}
+
+
+def _key(ctx: Any, tool: str, args: Any) -> tuple[str, str, str]:
+    return (str(getattr(ctx.deps, "thread_id", "?")), tool,
+            json.dumps(args, sort_keys=True, default=str))
+
+
+def remember(ctx: Any, tool: str, args: Any, payload: str) -> str:
+    """Record a successful result so a repeat can be served from it.
+
+    Returns the payload unchanged, so a tool can wrap its return value:
+
+        return remember(ctx, "get_sec_financials", args, json.dumps(out))
+    """
+    _results[_key(ctx, tool, args)] = payload
+    return payload
+
 
 def _too_many_repeats(ctx: Any, tool: str, args: Any) -> str | None:
-    k = (str(getattr(ctx.deps, "thread_id", "?")), tool,
-         json.dumps(args, sort_keys=True, default=str))
+    k = _key(ctx, tool, args)
     _repeats[k] = _repeats.get(k, 0) + 1
 
     # A returned STOP string is only ADVICE, and advice can be ignored. Observed
@@ -68,12 +106,30 @@ def _too_many_repeats(ctx: Any, tool: str, args: Any) -> str | None:
         )
 
     if _repeats[k] > MAX_IDENTICAL_CALLS:
+        cached = _results.get(k)
+        if cached is not None:
+            # The same data, again, with a note rather than an error. Nothing
+            # here reads as a failure, so there is nothing to retry.
+            try:
+                payload = json.loads(cached)
+            except (TypeError, ValueError):
+                payload = {"result": cached}
+            if isinstance(payload, dict):
+                payload["repeat_note"] = (
+                    f"This is the cached result of an identical {tool} call made "
+                    f"earlier in this turn. Nothing failed and the value has not "
+                    f"changed. Use it and continue; do not call {tool} with these "
+                    f"arguments again."
+                )
+                return json.dumps(payload, default=str)
+            return cached
+
+        # No cached result means every attempt failed, so guard 1 has the story.
         return json.dumps({
             "error": f"STOP: {tool} has already been called {_repeats[k] - 1} times "
-                     "with exactly these arguments this turn.",
-            "instruction": ("The answer will not change. Use the value you already "
-                            "received. If it looks wrong, say so in your answer and "
-                            "explain the discrepancy rather than calling again."),
+                     "with exactly these arguments this turn, without ever succeeding.",
+            "instruction": ("Do not call it again. Report what you could not compute "
+                            "and why, using the data you already have."),
         })
     return None
 

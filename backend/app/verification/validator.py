@@ -132,9 +132,17 @@ class OpenAIGroundingJudge:
         cases: list[CitationGroundingCase],
     ) -> list[CitationGroundingDecision]:
         telemetry.record_validator_call()
+        # Thinking is off across the agent loop because it multiplied output
+        # tokens without changing a single tool call. It is on here, and only
+        # here: this call weighs an excerpt against a claim, and a wrong verdict
+        # either publishes an ungrounded answer or throws away a good one.
+        extra: dict[str, object] = {}
+        if settings.grounding_judge_reasoning not in ("", "none"):
+            extra["reasoning_effort"] = settings.grounding_judge_reasoning
         response = self._client.chat.completions.parse(
             model=settings.gemini_grounding_model,
             temperature=0,
+            **extra,
             messages=[
                 {"role": "system", "content": _GROUNDING_JUDGE_SYSTEM_PROMPT},
                 {
@@ -165,6 +173,83 @@ def _citation_markers(text: str) -> set[int]:
             if part.isdigit():
                 found.add(int(part))
     return found
+
+
+
+
+# A currency figure the answer asserts, and every number a source offers.
+_MONEY = re.compile(r"\$\s*([0-9][0-9,]*(?:\.[0-9]+)?)")
+_NUMBER = re.compile(r"[0-9][0-9,]*(?:\.[0-9]+)?")
+
+def _as_float(token: str) -> float | None:
+    try:
+        return float(token.replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _decimals(token: str) -> int:
+    cleaned = token.replace(",", "")
+    return len(cleaned.split(".")[1]) if "." in cleaned else 0
+
+
+# A figure may be quoted in the units the source used, or rescaled: a tool
+# returning 32488000000 supports an answer saying $32.49B.
+_SCALES = (1.0, 1e-3, 1e-6, 1e-9)
+
+# Tools whose output the model is expected to do arithmetic on.
+_DERIVING_TOOLS = ("run_dcf_valuation", "run_comps_valuation")
+
+
+def _unsupported_figure(answer_text: str, sources: str) -> str | None:
+    """The first currency figure in the answer that no source this turn produced.
+
+    ## Why this exists
+    An answer that cites nothing was allowed unconditionally, on the reasoning
+    that its figures must have come from a tool. That reasoning was never
+    checked. Asked about a company outside the corpus, a model returned a revenue
+    figure with no citations and no tool call behind it, and the gate passed it
+    precisely because it had cited nothing. An uncited claim was trusted while a
+    cited one was verified, which is backwards.
+
+    ## Why the comparison is numeric rather than textual
+    The first version compared significant digits with a prefix match, which
+    silently assumed a model quoting a figure to fewer places would truncate.
+    Models round. `get_xbrl_tag` returned Microsoft R&D of 32.488, the answer
+    correctly said $32.49, and prefix matching rejected a true statement because
+    "3249" does not begin "32488". A false rejection is expensive out of
+    proportion to the check: the orchestrator answers one by re-running the
+    entire agent. So a figure is supported when some source value, at some
+    scale, rounds to it at the precision the answer used.
+
+    Percentages and ratios are ignored: an operating margin is computed by the
+    model rather than returned by anything. Figures below 1 are ignored as too
+    weak to be distinctive.
+    """
+    # A valuation composes figures rather than quoting them: a DCF discounts a
+    # projected cash flow the engine never returned as a literal, so every
+    # intermediate would read as unsourced. The check is for figures asserted
+    # about a company nobody looked up, which is a different situation, and it
+    # is switched off once an engine has run rather than made to guess which
+    # numbers are arithmetic.
+    if any(engine in sources for engine in _DERIVING_TOOLS):
+        return None
+
+    values = [v for v in (_as_float(n) for n in _NUMBER.findall(sources)) if v]
+    for raw in _MONEY.findall(answer_text):
+        claimed = _as_float(raw)
+        if claimed is None or claimed < 1:
+            continue
+        places = _decimals(raw)
+        target = round(claimed, places)
+        if any(
+            round(value * scale, places) == target
+            for value in values
+            for scale in _SCALES
+        ):
+            continue
+        return raw
+    return None
 
 
 def prune_unreferenced_citations(answer: GroundedAnswer) -> GroundedAnswer:
@@ -243,9 +328,27 @@ class GroundingValidator:
         self,
         answer: GroundedAnswer,
         registry: TurnRegistry,
+        tool_outputs: str | None = None,
     ) -> ValidationResult:
         if not answer.answer.strip():
             return ValidationResult(ok=False, error="Answer text is empty.")
+
+        # Every figure in the answer has to have come from somewhere this turn:
+        # a tool return, or the text of a passage that was actually retrieved.
+        if tool_outputs is not None:
+            sources = "\n".join([tool_outputs] + [
+                passage.text for passage in registry.passages_by_chunk_id.values()
+            ])
+            orphan = _unsupported_figure(answer.answer, sources)
+            if orphan is not None:
+                return ValidationResult(
+                    ok=False,
+                    error=(
+                        f"Answer states ${orphan}, which no tool returned and no "
+                        f"retrieved passage contains. Either retrieve the figure "
+                        f"or say the filing was not available."
+                    ),
+                )
 
         if answer.insufficient_evidence:
             if answer.citations:

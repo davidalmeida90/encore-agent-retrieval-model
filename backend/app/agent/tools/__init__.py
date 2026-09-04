@@ -27,6 +27,13 @@ rent it charges on every other question.
 
 from __future__ import annotations
 
+
+from app.agent.tools.agentic import (
+    edgar_search,
+    parse_html_page,
+    retrieve_information,
+    web_search,
+)
 from app.agent.tools.fundamentals import get_sec_financials, get_xbrl_tag
 from app.agent.tools.market import get_risk_free_rate, get_stock_prices
 from app.agent.tools.retrieval import (
@@ -41,17 +48,26 @@ from app.agent.tools.valuation import (
     get_comps_inputs,
     get_three_statement_opening,
     project_three_statement_model,
+    reason_about_assumptions,
     run_comps_valuation,
     run_dcf_valuation,
 )
 
 # --------------------------------------------------------------------- registry
 TOOLS = [
-    # -- retrieval over the indexed filings ---------------------------------
+    # -- retrieval, RAG mode: search the ingested index ---------------------
+    # Visible only when the turn's retrieval_mode is "rag"; see toolgate.py.
     search_filings,
     read_chunk,
     read_chunks,
     read_surrounding_chunks,
+    # -- retrieval, agentic mode: no index, search SEC directly -------------
+    # Visible only when the mode is "agentic". The two sets are alternatives,
+    # never offered together, so the model cannot mix provenance.
+    web_search,
+    edgar_search,
+    parse_html_page,
+    retrieve_information,
     # -- company fundamentals, from SEC XBRL --------------------------------
     get_sec_financials,
     get_xbrl_tag,
@@ -61,6 +77,9 @@ TOOLS = [
     # -- input assemblers: one call each, so the model never hunts ----------
     get_comps_inputs,
     # -- deterministic valuation engines (vendored quantlib) ----------------
+    # Thinking happens here, in a call that offers no tools: on a self-hosted
+    # Qwen, reasoning and tool calling cannot both work at once.
+    reason_about_assumptions,
     run_dcf_valuation,
     run_comps_valuation,
     # -- methodology, loaded on demand --------------------------------------

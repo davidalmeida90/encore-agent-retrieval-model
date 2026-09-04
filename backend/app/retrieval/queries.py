@@ -83,6 +83,45 @@ def semantic_search(
     return _rows_to_hits(rows)
 
 
+def full_text_candidates(
+    session: Session,
+    query_text: str,
+    *,
+    limit: int,
+    filters: SearchFilters | None = None,
+) -> list[tuple[UUID, str]]:
+    """FTS hits WITH their stored tsvector, in a single round trip.
+
+    BM25 needs a term frequency and a document length per candidate, both of
+    which are already inside `search_vector`. Fetching them separately cost a
+    second query to a remote Postgres: measured at 321 ms of BM25's 387 ms,
+    against 1 ms for the arithmetic itself. The database was never the slow
+    part; the round trip was.
+
+    Returns (id, tsvector-as-text) so the caller can score without another
+    query. See retrieval/bm25.py for the parsing.
+    """
+    fts_config = settings.retrieval_fts_config
+    filter_clause = _build_filters(filters)
+    sql = f"""
+        SELECT dc.id, dc.search_vector::text
+        FROM document_chunks dc
+        JOIN source_documents sd ON sd.id = dc.document_id,
+             to_tsquery('{fts_config}',
+                        replace(plainto_tsquery('{fts_config}', :query_text)::text,
+                                ' & ', ' | ')) query
+        WHERE dc.search_vector @@ query
+        {filter_clause.sql}
+        ORDER BY ts_rank_cd(dc.search_vector, query) DESC
+        LIMIT :limit
+    """
+    rows = session.execute(
+        text(sql),
+        {"query_text": query_text, "limit": limit, **filter_clause.params},
+    ).fetchall()
+    return [(row[0], row[1]) for row in rows]
+
+
 def full_text_search(
     session: Session,
     query_text: str,
@@ -90,6 +129,19 @@ def full_text_search(
     limit: int,
     filters: SearchFilters | None = None,
 ) -> list[RankedChunkHit]:
+    # plainto_tsquery joins every term with AND, which for a natural-language
+    # question means the chunk must contain ALL of them - including "describe",
+    # "10" and "k". Measured on this corpus, "How does Microsoft describe Azure's
+    # competitive advantage in its 10-K?" matched 0 chunks of 27,222, and a
+    # retrieval eval put full-text recall at 2% against 46% for the vector leg,
+    # with ZERO chunks found by full text that the vector leg missed. The lexical
+    # half of a hybrid retriever was contributing nothing at all.
+    #
+    # Swapping the operator to OR gives ts_rank_cd something to rank: the same
+    # query then matches 5,351 chunks, and cover-density scoring rewards the ones
+    # carrying more of the rare terms. The cast is safe because plainto_tsquery
+    # has already parsed, stemmed and escaped the input; only the operator
+    # between the lexemes changes.
     fts_config = settings.retrieval_fts_config
     filter_clause = _build_filters(filters)
     sql = f"""
@@ -97,7 +149,9 @@ def full_text_search(
                ts_rank_cd(dc.search_vector, query) AS score
         FROM document_chunks dc
         JOIN source_documents sd ON sd.id = dc.document_id,
-             plainto_tsquery('{fts_config}', :query_text) query
+             to_tsquery('{fts_config}',
+                        replace(plainto_tsquery('{fts_config}', :query_text)::text,
+                                ' & ', ' | ')) query
         WHERE dc.search_vector @@ query
         {filter_clause.sql}
         ORDER BY score DESC
@@ -142,7 +196,9 @@ def _fts_sql_template(fts_config: str, filter_clause: _FilterClause) -> str:
                ts_rank_cd(dc.search_vector, query) AS score
         FROM document_chunks dc
         JOIN source_documents sd ON sd.id = dc.document_id,
-             plainto_tsquery('{fts_config}', :query_text) query
+             to_tsquery('{fts_config}',
+                        replace(plainto_tsquery('{fts_config}', :query_text)::text,
+                                ' & ', ' | ')) query
         WHERE dc.search_vector @@ query
         {filter_clause.sql}
         ORDER BY score DESC

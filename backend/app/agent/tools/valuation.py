@@ -22,14 +22,20 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 from pydantic_ai import RunContext
 
 from app.agent.deps import DocumentAgentDeps
+from app.config import settings
 from app.agent.status import emit_tool_start
-from app.agent.tools.skills import skill_was_loaded
+from app.agent.tools.skills import (
+    has_reasoned,
+    loader as skill_loader,
+    mark_reasoned,
+    skill_was_loaded,
+)
 from app.agent.tools._guards import (
     _record_failure,
     _safe,
@@ -52,6 +58,225 @@ class Peer(BaseModel):
     revenue: float
     diluted_eps: float
     book_value_of_equity: float
+
+def _sensitivity(inputs: dict, result: dict, discounting_convention: str) -> dict:
+    """Value per share across a WACC x terminal-growth grid.
+
+    ## Why this is here and was not
+    instructions.md tells the model to structure a valuation as "assumptions,
+    output and sensitivity", and the valuation skill calls the sensitivity table
+    mandatory. The engine has shipped `sensitivity_grid` all along and nothing
+    ever called it, so the table was demanded, promised, and never produced -
+    the same shape of gap as `cross_checks`.
+
+    It matters more than a nicety here. This model came in 48-68% below market
+    on four large caps, and a single point estimate cannot show whether that is
+    a real disagreement or a WACC a quarter-point too high. A grid can: it shows
+    the whole neighbourhood at once, and the reader can find their own view in it.
+
+    The axes are centred on the assumptions actually used, plus or minus one and
+    two steps, so the chosen cell sits in the middle. Cells where growth is at or
+    above WACC come back as null rather than a huge number, because the
+    perpetuity is undefined there rather than merely large.
+    """
+    from vendor.quantlib.valuation.dcf import fcff_bridge, sensitivity_grid
+
+    wacc = float((result.get("wacc_build") or {}).get("wacc") or 0.0)
+    growth_input = inputs.get("terminal_growth")
+    growth = float(getattr(growth_input, "value", growth_input) or 0.0)
+    if not wacc:
+        return {}
+
+    waccs = [round(wacc + step, 4) for step in (-0.01, -0.005, 0.0, 0.005, 0.01)]
+    growths = [round(growth + step, 4) for step in (-0.01, -0.005, 0.0, 0.005, 0.01)]
+    waccs = [w for w in waccs if w > 0]
+    growths = [g for g in growths if g >= 0]
+
+    try:
+        years = fcff_bridge(
+            ebit=inputs["ebit"],
+            tax_rate=float(getattr(inputs["tax_rate"], "value",
+                                   inputs["tax_rate"])),
+            depreciation_amortization=inputs["depreciation_amortization"],
+            capex=inputs["capex"],
+            delta_nwc=inputs["delta_nwc"],
+        )
+        grid = sensitivity_grid(
+            years,
+            wacc_values=waccs,
+            growth_values=growths,
+            discounting_convention=discounting_convention,
+            total_debt=inputs["total_debt"],
+            cash_and_equivalents=inputs["cash_and_equivalents"],
+            minority_interest=inputs["minority_interest"],
+            preferred_equity=inputs["preferred_equity"],
+            associate_investments=inputs["associate_investments"],
+            diluted_shares=inputs["diluted_shares"],
+        )
+    except Exception as exc:  # a grid is a nicety; never lose the valuation over it
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+    rows = []
+    for wacc_value, row in grid.iterrows():
+        rows.append({
+            "wacc": f"{float(wacc_value):.2%}",
+            **{f"g={float(g):.2%}": (None if row[g] != row[g] else round(float(row[g]), 2))
+               for g in grid.columns},
+        })
+    return {
+        "axes": "rows are WACC, columns are terminal growth; cells are value per share",
+        "centre": {"wacc": f"{wacc:.2%}", "terminal_growth": f"{growth:.2%}"},
+        "grid": rows,
+        "null_cells": "growth at or above WACC: the perpetuity is undefined, not large",
+        "REPORT_AS": "Render this as a markdown table. It is the sensitivity the "
+                     "valuation skill requires, and a point estimate without it is "
+                     "not decision-grade.",
+    }
+
+
+def _cross_checks(result: dict, terminal_growth: float, market_cap: float,
+                  diluted_shares: float, risk_free_rate: float = 0.0) -> dict:
+    """Reciprocal checks on a finished DCF, in the units the analyst argues in.
+
+    ## Why this exists
+    instructions.md has always told the model to report `cross_checks`, and the
+    engine has never produced them, so the sanity checks the valuation skill
+    calls mandatory were never actually computed. A Microsoft DCF came back at
+    $148 a share against a $513 price and nothing in the output said why.
+
+    The arithmetic in that run was correct; the assumptions were incoherent, and
+    incoherent in a way a single ratio exposes. Terminal capex was $95B against
+    $56B of D&A, so the company reinvests 29% of NOPAT forever, while terminal
+    growth was set to 2.5%. Growth equals reinvestment times return, so those two
+    together imply a return on new capital of 8.6% against a 10.2% WACC: every
+    dollar Microsoft invests destroys value, in perpetuity. Nobody would defend
+    that in a committee, but nobody was shown it either.
+
+    These are checks, not corrections. A DCF with a flagged ratio is still
+    returned; the flag goes next to it so the number is argued with rather than
+    quoted.
+    """
+    bridge = result.get("fcff_bridge") or []
+    wacc = ((result.get("wacc_build") or {}).get("wacc")) or 0.0
+    if not bridge or not wacc:
+        return {}
+
+    final = bridge[-1]
+    nopat = float(final.get("nopat") or 0.0)
+    da = float(final.get("depreciation_amortization") or 0.0)
+    capex = float(final.get("capex") or 0.0)
+    nwc = float(final.get("delta_nwc") or 0.0)
+    ebit = float(final.get("ebit") or 0.0)
+    ev = float(result.get("enterprise_value") or 0.0)
+
+    checks: dict = {}
+    warnings: list[str] = []
+
+    # 1. Reinvestment must be consistent with growth: g = reinvestment rate x ROIC.
+    reinvestment = capex - da + nwc
+    if nopat > 0:
+        rate = reinvestment / nopat
+        checks["terminal_reinvestment_rate"] = round(rate, 4)
+        if rate > 0.01:
+            implied_roic = terminal_growth / rate
+            checks["implied_roic_on_new_capital"] = round(implied_roic, 4)
+            checks["wacc"] = round(wacc, 4)
+            if implied_roic < wacc:
+                warnings.append(
+                    f"Terminal assumptions imply a return on new capital of "
+                    f"{implied_roic:.1%} against a WACC of {wacc:.1%}: the company "
+                    f"would destroy value on every dollar reinvested, forever. "
+                    f"Either terminal growth is too low for this level of capex, "
+                    f"or terminal capex is too high for this growth."
+                )
+
+    # 2. Capex should converge towards D&A in a steady state.
+    if da > 0:
+        ratio = capex / da
+        checks["terminal_capex_to_da"] = round(ratio, 2)
+        if ratio > 1.35:
+            warnings.append(
+                f"Terminal capex is {ratio:.2f}x D&A. A perpetuity assumes a "
+                f"steady state, where the two converge; sustained excess capex "
+                f"depresses terminal FCFF without buying the growth that would "
+                f"justify it."
+            )
+
+    # 3. What multiple is this valuation implicitly paying?
+    ebitda = ebit + da
+    if ebitda > 0 and ev:
+        checks["implied_ev_ebitda"] = round(ev / ebitda, 2)
+
+    # 4. Terminal growth cannot exceed the economy it grows in.
+    checks["terminal_growth"] = round(terminal_growth, 4)
+    if terminal_growth >= wacc:
+        warnings.append("Terminal growth is at or above WACC: the perpetuity does "
+                        "not converge and the terminal value is meaningless.")
+
+    # 5. The gap the analyst has to defend.
+    if market_cap and diluted_shares:
+        market_price = market_cap / diluted_shares
+        value = float(result.get("value_per_share") or 0.0)
+        checks["market_price_per_share"] = round(market_price, 2)
+        if market_price > 0 and value:
+            gap = value / market_price - 1.0
+            checks["gap_to_market"] = f"{gap:+.0%}"
+            if abs(gap) > 0.5:
+                warnings.append(
+                    f"Valuation is {gap:+.0%} away from the market price. A gap "
+                    f"this size is usually an assumption error rather than an "
+                    f"opportunity: check the reinvestment and terminal ratios "
+                    f"above before presenting it."
+                )
+
+    # 6. The reverse question, which is the one an analyst actually asks.
+    #
+    # Across AAPL, MSFT, WMT and KO this model came in 48-68% below market with
+    # internally consistent assumptions, because a 9-10% WACC against 2.5-3%
+    # terminal growth implies roughly 14-17x NOPAT while those names trade at
+    # 29-43x earnings. Reporting "the market is 60% too high" four times is not
+    # analysis. Solving for the growth the market is paying for is: it converts a
+    # disagreement about price into a testable statement about expectations.
+    #
+    # From EV = PV(explicit) + TV x discount_factor and
+    # TV = FCFF_final x (1+g) / (wacc - g), solving for g gives
+    #     g = (TV x wacc - FCFF) / (TV + FCFF)
+    equity = float(result.get("equity_value") or 0.0)
+    pv_explicit = float(result.get("pv_of_explicit_fcff") or 0.0)
+    tdf = float(result.get("terminal_discount_factor") or 0.0)
+    fcff_final = float(final.get("fcff") or 0.0)
+    if market_cap and ev and equity and tdf > 0 and fcff_final > 0:
+        net_debt = ev - equity
+        ev_at_market = market_cap + net_debt
+        tv_needed = (ev_at_market - pv_explicit) / tdf
+        if tv_needed > 0:
+            implied_g = (tv_needed * wacc - fcff_final) / (tv_needed + fcff_final)
+            checks["terminal_growth_implied_by_market"] = round(implied_g, 4)
+            checks["risk_free_rate"] = round(risk_free_rate, 4)
+            if implied_g >= risk_free_rate:
+                warnings.append(
+                    f"To reach the market price this model needs terminal growth "
+                    f"of {implied_g:.1%}, above the {risk_free_rate:.1%} risk-free "
+                    f"rate. No company outgrows its economy forever, so either the "
+                    f"market is pricing growth that cannot persist, or the WACC "
+                    f"here is too high for a business of this quality. Say which "
+                    f"you believe rather than presenting the gap as a call."
+                )
+            else:
+                warnings.append(
+                    f"The market is priced for terminal growth of about "
+                    f"{implied_g:.1%} against the {terminal_growth:.1%} assumed "
+                    f"here. That difference, not the price gap, is the thing to "
+                    f"defend."
+                )
+
+    checks["warnings"] = warnings
+    checks["READ_THIS"] = (
+        "Report these alongside the valuation. A warning means the inputs are "
+        "internally inconsistent, not that the arithmetic failed."
+    )
+    return checks
+
 
 async def run_dcf_valuation(
     ctx: RunContext[DocumentAgentDeps],
@@ -116,6 +341,22 @@ async def run_dcf_valuation(
     # and never mentioning the gap. The skill is what supplies the reinvestment
     # rule, the terminal-growth ceiling, the sensitivity table and the mandatory
     # comparison to market price. Prose asked; this insists.
+    # Same insistence, one step later. Prose told the model to reason about its
+    # assumptions before running the engine, and compliance was intermittent: the
+    # runs that skipped it came back with terminal capex at 1.5x to 3.4x D&A and
+    # a return on new capital below WACC, which is the incoherence that produced
+    # $76 for Microsoft. The reasoning step is where that gets caught, so it is
+    # required rather than encouraged.
+    if not has_reasoned(ctx, "dcf"):
+        return json.dumps({
+            "error": "STOP: reason about the assumptions before running the engine.",
+            "instruction": (
+                "Call reason_about_assumptions with every figure you have sourced. "
+                "It reasons over the valuation skill and returns proposals with "
+                "their basis. You may overrule any of them; you may not skip it."
+            ),
+        })
+
     if not skill_was_loaded(ctx, "us-equity-valuation"):
         return json.dumps({
             "error": "STOP: read the valuation method before running the engine.",
@@ -176,8 +417,15 @@ async def run_dcf_valuation(
             discounting_convention=discounting_convention,
             terminal_value_method=terminal_value_method,
         )
+        safe = _safe(result)
         return json.dumps(
-            {"ticker": ticker.upper(), "result": _safe(result),
+            {"ticker": ticker.upper(), "result": safe,
+             "sensitivity": _sensitivity(inputs, safe if isinstance(safe, dict) else {},
+                                         discounting_convention),
+             "cross_checks": _cross_checks(
+                 safe if isinstance(safe, dict) else {},
+                 terminal_growth, market_value_of_equity, diluted_shares,
+                 risk_free_rate),
              "engine": "quantlib run_dcf (HKUDS/Vibe-Trading, MIT), unmodified"},
             default=str,
         )
@@ -186,6 +434,167 @@ async def run_dcf_valuation(
         return json.dumps({"error": f"{type(e).__name__}: {e}",
                            "note": "engine refused the inputs; do not substitute a guess. "
                                    "Fix the inputs or report the failure; do not retry blindly."})
+
+async def reason_about_assumptions(
+    ctx: RunContext[DocumentAgentDeps],
+    ticker: Annotated[str, Field(description="Ticker being valued, e.g. 'MSFT'.")],
+    sourced_facts: Annotated[str, Field(description=(
+        "Every figure you have already SOURCED, with its origin, one per line. "
+        "For example: 'FY2026 EBIT 155.237 (get_sec_financials)', 'capex 115.948 "
+        "(get_sec_financials)', 'D&A 34.3 (get_xbrl_tag, tag Depreciation)', "
+        "'risk-free 4.72% (get_risk_free_rate)', 'shares 7.453'. Do not put "
+        "anything here you have not actually retrieved."
+    ))],
+    question: Annotated[str, Field(description=(
+        "What to decide, e.g. 'terminal growth, terminal capex and beta for a "
+        "5-year DCF'."
+    ))] = "every DCF assumption",
+) -> str:
+    """Think through DCF assumptions against the valuation skill, before running it.
+
+    Call this AFTER gathering figures and BEFORE `run_dcf_valuation`. It returns
+    reasoning and proposed assumptions; you still choose, and you still run the
+    engine.
+
+    This is where a valuation is won or lost. The engine is arithmetic and cannot
+    be wrong; the assumptions are judgements, and a DCF built on incoherent ones
+    produced $148 for Microsoft against a $513 price.
+    """
+    emit_tool_start(ctx.deps, "reason_about_assumptions", f"{ticker.upper()}: {question[:40]}")
+
+    try:
+        method = skill_loader().get_content("us-equity-valuation")
+    except Exception:
+        method = ""
+
+    # In CAG mode the parent already has the whole filing in context, but this
+    # is a SEPARATE model call and does not inherit it. Without this the filing
+    # contributes nothing to a valuation, which is the wrong half of the right
+    # rule: instructions.md deliberately routes reported FIGURES to XBRL,
+    # because tagged facts are exact and prose is not. It never routed the
+    # JUDGEMENTS anywhere, and those are exactly what a filing is good for -
+    # management's own capex guidance, growth commentary, the concentration and
+    # risk language that argues a beta up or down.
+    # Loaded here regardless of retrieval mode, and that is the point. A DCF in
+    # CAG mode is not merely expensive but impossible: the filing rides in the
+    # parent context on EVERY round, and three tool calls came to 589,810 tokens
+    # against a 400,000 ceiling. Yet the filing is only wanted by this one step.
+    #
+    # So it is fetched here instead, for a single sub-model call. A DCF can then
+    # run in RAG mode -- cheap parent context, six rounds, no filing re-sent --
+    # while its assumptions are still argued from what management actually wrote.
+    # ONLY in CAG mode. The filing is 191,000 tokens, and loading it when the
+    # user has not asked for CAG is a surprise on their bill and their latency.
+    # RAG and agentic already carry their own way of reaching filing text.
+    #
+    # The cost of this restraint is real and worth knowing: a DCF run in RAG mode
+    # sets beta and growth from sector priors rather than from what management
+    # actually wrote. In CAG mode it argues them from the filing. That is the
+    # trade, and it is the user's to make by choosing the mode.
+    filing = ""
+    if getattr(ctx.deps, "retrieval_mode", "") == "cag":
+        from app.agent.tools.cag import preload
+
+        filing, _n = preload(getattr(ctx.deps, "cag_ticker", "") or ticker,
+                             getattr(ctx.deps, "cag_fiscal_year", 0))
+
+    prompt = (
+        "You are setting the assumptions for a discounted cash flow valuation of "
+        f"{ticker.upper()}. Decide: {question}.\n\n"
+        "## The method you must follow\n" + method + "\n\n"
+        "## Figures already sourced\n" + sourced_facts + "\n\n"
+        "## What to return\n"
+        "For EACH assumption: the value, and one sentence of justification tied "
+        "to the method above or to a sourced figure. Then state, explicitly:\n"
+        "  - the terminal reinvestment rate your capex and D&A imply,\n"
+        "  - the return on new capital that rate implies at your terminal growth "
+        "(growth = reinvestment rate x return), and\n"
+        "  - whether that return is above the WACC you are proposing.\n"
+        "If it is below WACC, your assumptions say the company destroys value "
+        "forever. Fix them here rather than defending them later. Terminal capex "
+        "must converge towards D&A unless you can say what the extra buys.\n"
+        "Plain text. No tool calls."
+    )
+    if filing:
+        prompt += (
+            "\n\n## The full 10-K\n\n"
+            "Numbers come from the tools above, not from this text: tagged XBRL "
+            "is exact and prose is not. Use the filing for the JUDGEMENTS "
+            "instead. Quote it where management's own words bear on growth, "
+            "on the capex trajectory, or on the risk that should move beta, "
+            "and say which sentence moved you.\n\n" + filing
+        )
+
+    from openai import AsyncOpenAI
+
+    # Follow the model answering this turn, not the .env file. A stale
+    # LOCAL_LLM_BASE_URL from a terminated pod otherwise sends this call to a
+    # dead endpoint while the agent itself is happily running on Gemini.
+    from app.agent.models import choice as model_choice
+
+    try:
+        on_local = model_choice(ctx.deps.model_name).provider == "openai_compatible"
+    except Exception:
+        on_local = False
+    if on_local and settings.local_llm_base_url:
+        client = AsyncOpenAI(api_key=settings.local_llm_api_key or "none",
+                             base_url=settings.local_llm_base_url)
+        model_name = settings.local_llm_model
+        # Thinking is safe HERE and nowhere else on a self-hosted Qwen. In the
+        # agent loop it breaks tool calling outright: vLLM emits the call as XML
+        # inside the reasoning block, the tool parser never sees it, the client
+        # gets an empty tool_calls array and retries, and the run loops until the
+        # repeat guard kills it (vllm#42021, vllm#39056). This call offers no
+        # tools and wants prose, so none of that machinery is in the path.
+        extra = {"chat_template_kwargs": {"enable_thinking": True}, "think": True}
+    else:
+        client = AsyncOpenAI(api_key=settings.gemini_api_key,
+                             base_url=settings.gemini_openai_base_url)
+        model_name = settings.gemini_grounding_model
+        extra = {"reasoning_effort": "medium"}
+
+    # Bounded, and on a clock. Thinking is on for this call because setting DCF
+    # assumptions is judgement rather than lookup, but an unbounded reasoning
+    # chain at ~50 tok/s on a self-hosted 27B is not a slow answer, it is a hung
+    # product: a Microsoft valuation sat at this step for over twenty minutes
+    # with the GPU busy and nothing to show. A cap turns that into a worse answer
+    # instead of no answer, which is the right way round.
+    try:
+        completion = await client.chat.completions.create(
+            model=model_name,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=settings.assumptions_max_tokens,
+            timeout=settings.assumptions_timeout_seconds,
+            extra_body=extra,
+        )
+        message = completion.choices[0].message
+        # With thinking on, vLLM may put the answer in reasoning_content and
+        # leave content empty. Take whichever is populated.
+        text = (message.content or "").strip()
+        reasoning = (getattr(message, "reasoning_content", None) or "").strip()
+        answer = text or reasoning
+    except Exception as exc:
+        _record_failure(ctx, "reason_about_assumptions")
+        return json.dumps({"error": f"{type(exc).__name__}: {exc}",
+                           "note": "Proceed with the skill yourself; do not skip it."})
+
+    usage = getattr(completion, "usage", None)
+    if usage is not None:
+        ctx.deps.extract_calls += 1
+        ctx.deps.extract_input_tokens += int(getattr(usage, "prompt_tokens", 0) or 0)
+        ctx.deps.extract_output_tokens += int(getattr(usage, "completion_tokens", 0) or 0)
+
+    mark_reasoned(ctx, "dcf")
+    return json.dumps({
+        "ticker": ticker.upper(),
+        "thinking_enabled": True,
+        "model": model_name,
+        "proposed_assumptions": answer,
+        "USE_AS": ("Proposals, not results. Pass what you accept into "
+                   "run_dcf_valuation, and report each one's basis in your answer."),
+    })
+
 
 async def run_comps_valuation(
     ctx: RunContext[DocumentAgentDeps],

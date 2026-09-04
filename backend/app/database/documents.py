@@ -17,9 +17,17 @@ def get_chunks_by_ids(
     if not chunk_ids:
         return {}
 
+    # `markdown_content` is the WHOLE filing, averaging 1.26 MB and reaching
+    # 4.92 MB, and joinedload pulls it once per chunk. At a pool of 30 that was
+    # roughly 38 MB of waste per search; at 50 Postgres began answering "out of
+    # memory for query result" and retrieval failed outright. Nothing here reads
+    # it: passages are built from the chunk's own text plus small document
+    # metadata, so it is deferred rather than fetched and discarded.
     rows = session.scalars(
         select(DocumentChunk)
-        .options(joinedload(DocumentChunk.document))
+        .options(
+            joinedload(DocumentChunk.document).defer(SourceDocument.markdown_content)
+        )
         .where(DocumentChunk.id.in_(chunk_ids))
     ).all()
     return {row.id: row for row in rows}

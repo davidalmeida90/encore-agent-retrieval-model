@@ -173,8 +173,97 @@ async def list_models(_: CurrentUser = Depends(get_current_user)) -> list[dict]:
     from app.agent.models import MODELS
 
     return [
-        {"id": m.id, "label": m.label, "hint": m.hint, "default": m.default}
+        {
+            "id": m.id,
+            "label": m.label,
+            "hint": m.hint,
+            "default": m.default,
+            # Where it runs, so the picker can say so. A self-hosted model with
+            # no server up fails with a bare connection error, which reads as a
+            # broken app rather than a machine that is switched off.
+            "self_hosted": m.provider == "openai_compatible",
+        }
         for m in MODELS
+    ]
+
+
+@router.get("/cag-companies")
+async def list_cag_companies(_: CurrentUser = Depends(get_current_user)) -> list[str]:
+    """Companies CAG can preload. It cannot infer one from the question: the
+    filing has to be in the prompt before the question is asked."""
+    from app.agent.tools.cag import available_tickers
+
+    return available_tickers()
+
+
+@router.post("/cag-warm")
+async def warm_cag_cache(
+    ticker: str,
+    _: CurrentUser = Depends(get_current_user),
+) -> dict:
+    """Prefill the model's cache with one filing, before any question is asked.
+
+    CAG's cost is front-loaded: the first question pays ~90 seconds to prefill
+    191,000 tokens and every later one reuses the cached prefix in ~2 seconds.
+    Left alone, that wait lands after the user presses send, which is the worst
+    possible moment for it and looks like a hang.
+
+    This moves it to the moment they pick the company, so the loading happens
+    while they are still typing. It asks the model for a single token; the
+    answer is discarded and only the cache it leaves behind matters.
+    """
+    import time
+
+    from openai import AsyncOpenAI
+
+    from app.agent.agent import INSTRUCTIONS
+    from app.agent.tools.cag import preload
+    from app.retrieval import modes
+
+    started = time.time()
+    filing, passages = preload(ticker)
+    if not filing:
+        return {"ok": False, "error": f"No filing held for {ticker.upper()}."}
+
+    prompt = INSTRUCTIONS + "\n\n" + modes.instructions("cag") + "\n\n" + filing
+    if not (settings.local_llm_base_url and settings.local_llm_model):
+        # Hosted models have no prefix cache we control, so there is nothing to
+        # warm. Report the size so the UI can still set expectations honestly.
+        return {"ok": True, "warmed": False, "passages": passages,
+                "characters": len(prompt),
+                "note": "No local server configured; the filing is sent with each question."}
+
+    client = AsyncOpenAI(api_key=settings.local_llm_api_key or "none",
+                         base_url=settings.local_llm_base_url)
+    try:
+        await client.chat.completions.create(
+            model=settings.local_llm_model,
+            messages=[{"role": "system", "content": prompt},
+                      {"role": "user", "content": "Reply with the single word ready."}],
+            max_tokens=1,
+            temperature=0,
+        )
+    except Exception as exc:
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:200]}
+
+    return {"ok": True, "warmed": True, "passages": passages,
+            "seconds": round(time.time() - started, 1)}
+
+
+@router.get("/retrieval-modes")
+async def list_retrieval_modes(_: CurrentUser = Depends(get_current_user)) -> list[dict]:
+    """How the agent may look for filing text. See retrieval/modes.py."""
+    from app.retrieval import modes
+
+    return [
+        {
+            "id": m.id,
+            "label": m.label,
+            "hint": m.hint,
+            "default": m.default,
+            "caveat": m.caveat,
+        }
+        for m in modes.MODES
     ]
 
 
@@ -199,6 +288,9 @@ async def post_stream(
             thread_title=thread.title,
             retriever=retriever,
             model_name=body.model,
+            retrieval_mode=body.retrieval_mode,
+            cag_ticker=body.cag_ticker,
+            thinking=body.thinking,
         ),
         media_type="text/event-stream",
     )

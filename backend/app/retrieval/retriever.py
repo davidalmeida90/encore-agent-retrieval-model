@@ -113,10 +113,12 @@ from app.config import settings
 from app.database.documents import get_chunks_by_ids, get_surrounding_chunks
 from app.database.session import get_session
 from app.retrieval.embeddings import embed_query
+from app.retrieval.bm25 import score_rows as bm25_score_rows
+from app.retrieval.hyde import expand as hyde_expand
 from app.retrieval.fusion import reciprocal_rank_fusion
 from app.retrieval.keywords import extract_fts_keywords
 from app.retrieval.rerank import rerank
-from app.retrieval.queries import full_text_search, semantic_search
+from app.retrieval.queries import full_text_candidates, full_text_search, semantic_search
 from app.retrieval.types import RankedChunkHit, RetrievedPassage, SearchFilters
 
 from app.database.models import DocumentChunk, SourceDocument
@@ -175,7 +177,10 @@ class DocumentRetriever:
         # Two readings of one question, because the two searches below need
         # different things. ~0.9s each; run together they cost 0.9s, not 1.8s.
         with ThreadPoolExecutor(max_workers=2) as prep:
-            embed_future = prep.submit(embed_query, query)
+            # HyDE feeds the vector leg only; full-text still matches the
+            # user's literal words. See retrieval/hyde.py.
+            embed_future = prep.submit(
+                lambda: embed_query(hyde_expand(query)))
             kw_future = prep.submit(extract_fts_keywords, query, filters=filters)
             query_vec = embed_future.result()
             fts_query = kw_future.result()
@@ -295,12 +300,29 @@ def _dual_search(
 
     def fts() -> list[RankedChunkHit]:
         with get_session() as search_session:
-            return full_text_search(
+            if not settings.retrieval_bm25_enabled:
+                return full_text_search(
+                    search_session, fts_query, limit=candidate_k, filters=filters,
+                )
+            # Pull a wide set from the index WITH its tsvectors, then let BM25
+            # decide the order. ts_rank_cd has no IDF, so its own top-50 buries
+            # the rare terms that make a lexical match worth having; rescoring
+            # can only promote what it was handed, hence the wider pull. One
+            # query rather than two: the vectors come back with the hits, which
+            # removes the round trip that was 83% of BM25's cost.
+            rows = full_text_candidates(
                 search_session,
                 fts_query,
-                limit=candidate_k,
+                limit=settings.retrieval_bm25_candidates,
                 filters=filters,
             )
+            ordered = bm25_score_rows(
+                search_session, fts_query, rows, top_k=candidate_k,
+            )
+            return [
+                RankedChunkHit(chunk_id=chunk_id, rank=position, score=0.0)
+                for position, chunk_id in enumerate(ordered, 1)
+            ]
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         semantic_future = executor.submit(semantic)

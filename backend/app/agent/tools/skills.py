@@ -16,7 +16,12 @@ from app.agent.deps import DocumentAgentDeps
 from app.agent.status import emit_tool_start
 from vendor.skills import SkillsLoader
 
-_SKILLS_DIR = Path(__file__).resolve().parent.parent.parent / "skills"
+# backend/skills, not backend/app/skills. One .parent short of the repo layout
+# meant the loader pointed at a directory that has never existed, so
+# get_descriptions() returned "(no skills)" and load_skill could only fail. The
+# valuation skill is what supplies beta, ERP, terminal growth and the
+# reinvestment rule, so every DCF ran on whatever the model invented instead.
+_SKILLS_DIR = Path(__file__).resolve().parents[3] / "skills"
 
 
 @lru_cache(maxsize=1)
@@ -36,6 +41,20 @@ def skill_descriptions() -> str:
 # consults this: the valuation skill is what supplies beta, ERP, terminal growth
 # and the reinvestment rule, and without it the model invents them.
 _loaded: dict[str, set[str]] = {}
+
+
+#: Turns in which `reason_about_assumptions` has run, keyed by thread. Same
+#: mechanism as `_loaded`, and for the same reason: a step the answer depends on
+#: cannot be left to whether the model felt like following prose.
+_reasoned: dict[str, set[str]] = {}
+
+
+def mark_reasoned(ctx, name: str) -> None:
+    _reasoned.setdefault(str(getattr(ctx.deps, "thread_id", "?")), set()).add(name)
+
+
+def has_reasoned(ctx, name: str) -> bool:
+    return name in _reasoned.get(str(getattr(ctx.deps, "thread_id", "?")), set())
 
 
 def skill_was_loaded(ctx, name: str) -> bool:

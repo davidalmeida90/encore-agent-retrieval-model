@@ -32,8 +32,20 @@ function ChatThreadView({ threadId, initialMessages }: ChatThreadViewProps) {
   // Read as the INITIAL state rather than set in an effect: the transport is
   // built from `model` on the first render, and a later setState would send the
   // starter prompt through a transport still pointing at the default.
-  const navState = location.state as { initialPrompt?: string; model?: string | null } | null
+  const navState = location.state as {
+    initialPrompt?: string
+    model?: string | null
+    retrievalMode?: string | null
+    thinking?: boolean
+    cagTicker?: string
+  } | null
   const [model, setModel] = useState<string | null>(navState?.model ?? null)
+  const [retrievalMode, setRetrievalMode] = useState<string | null>(
+    navState?.retrievalMode ?? null,
+  )
+  // Off unless this question asks for it; see ThinkingToggle for the numbers.
+  const [thinking, setThinking] = useState(navState?.thinking ?? false)
+  const [cagTicker, setCagTicker] = useState(navState?.cagTicker ?? '')
 
   // Every status event does two jobs: it updates the transient line under the
   // composer, and it appends to the activity log so the whole run stays readable
@@ -51,7 +63,7 @@ function ChatThreadView({ threadId, initialMessages }: ChatThreadViewProps) {
     [pushLogEntry],
   )
 
-  const transport = useChatTransport(threadId, model, handleStatus)
+  const transport = useChatTransport(threadId, model, retrievalMode, thinking, cagTicker, handleStatus)
 
   const { messages, sendMessage, status, error, stop } = useChat({
     id: threadId,
@@ -98,7 +110,19 @@ function ChatThreadView({ threadId, initialMessages }: ChatThreadViewProps) {
         </div>
       ) : null}
 
-      <ChatInput status={status} onSend={send} onStop={stop} model={model} onModelChange={setModel} />
+      <ChatInput
+        status={status}
+        onSend={send}
+        onStop={stop}
+        model={model}
+        onModelChange={setModel}
+        retrievalMode={retrievalMode}
+        onRetrievalModeChange={setRetrievalMode}
+        thinking={thinking}
+        onThinkingChange={setThinking}
+        cagTicker={cagTicker}
+        onCagTickerChange={setCagTicker}
+      />
 
       <SourcePassageSheet
         citation={selectedCitation}
